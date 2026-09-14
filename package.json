@@ -14,10 +14,10 @@
     "db:test": "supabase test db",
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "node --test tests/*.test.mjs && npm run test --workspaces --if-present",
+    "test": "node --test tests/*.test.mjs && npm run test:unit && npm run test --workspaces --if-present",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
-    "test:coverage": "node --test --experimental-test-coverage --test-coverage-lines=80 --test-coverage-functions=80 --test-coverage-branches=80 tests/*.test.mjs && npm run test:coverage --workspaces --if-present",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-lines=80 --test-coverage-functions=80 --test-coverage-branches=80 tests/*.test.mjs && vitest run --coverage && npm run test:coverage --workspaces --if-present",
     "lint": "eslint tests eslint.config.mjs tools && npm run lint --workspaces --if-present",
     "guardrails": "node tools/architecture-guardrails.mjs"
   },
@@ -27,6 +27,7 @@
   "devDependencies": {
     "@eslint/js": "^9.0.0",
     "@playwright/test": "^1.55.0",
+    "@rolldown/binding-darwin-arm64": "^1.2.8",
     "@vitest/coverage-v8": "^5.0.0",
     "eslint": "^9.0.0",
     "globals": "^16.0.0",

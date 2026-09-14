@@ -92,3 +92,22 @@ test("Phase 1 scope documents the durable browser-close acceptance flow", async 
   assert.match(plan, /immutable dummy artifact/i);
   assert.match(plan, /Do not begin Phase 2/i);
 });
+
+test("domain packages do not import Phase 1 provider SDKs", async () => {
+  const providerImport = /from\s+["'](?:@supabase\/|@aws-sdk\/|@trigger\.dev\/)/u;
+
+  for (const packageName of ["contracts", "core"]) {
+    const files = await sourceFiles(path.join(repositoryRoot, "packages", packageName));
+    for (const file of files) {
+      assert.doesNotMatch(await readFile(file, "utf8"), providerImport, `provider import in ${file}`);
+    }
+  }
+});
+
+test("Phase 1 defines explicit provider-neutral ports without account secret persistence", async () => {
+  const ports = await readFile(path.join(repositoryRoot, "packages/core/src/ports.ts"), "utf8");
+
+  assert.match(ports, /interface WorkflowDispatcher/);
+  assert.match(ports, /interface SecretStore/);
+  assert.doesNotMatch(ports, /KMS|secret_records/i);
+});

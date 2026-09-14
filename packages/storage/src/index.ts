@@ -1,6 +1,20 @@
+export interface ImmutablePutRequest {
+  key: string;
+  bytes: Uint8Array;
+  mediaType: string;
+  sha256: string;
+}
+
+export interface ImmutablePutResult {
+  key: string;
+  sha256: string;
+  sizeBytes: number;
+  versionId: string;
+}
+
 export interface BlobStore {
-  putImmutable(key: string, bytes: Uint8Array, contentType: string): Promise<{ key: string; sha256: string; sizeBytes: number }>;
-  getAuthorized(key: string, actorId: string): Promise<Uint8Array>;
+  putImmutable(request: ImmutablePutRequest): Promise<ImmutablePutResult>;
+  createSignedDownload(key: string, expiresInSeconds: number): Promise<URL>;
 }
 
 export interface ProjectStore {
