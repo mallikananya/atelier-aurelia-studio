@@ -1,0 +1,21 @@
+{
+  "name": "atelier-aurelia-studio",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "npm run dev --workspace=@atelier-aurelia/studio",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "node --test tests/*.test.mjs && npm run test --workspaces --if-present",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-lines=80 --test-coverage-functions=80 --test-coverage-branches=80 tests/*.test.mjs && npm run test:coverage --workspaces --if-present",
+    "lint": "eslint tests eslint.config.mjs tools && npm run lint --workspaces --if-present",
+    "guardrails": "node tools/architecture-guardrails.mjs"
+  },
+  "engines": { "node": ">=22" },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
+    "globals": "^16.0.0",
+    "typescript-eslint": "^8.0.0"
+  }
+}

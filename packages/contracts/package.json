@@ -1,0 +1,8 @@
+{
+  "name": "@atelier-aurelia/contracts",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "tsc -p tsconfig.json", "typecheck": "tsc --noEmit", "test": "node --test src/*.test.mjs", "test:coverage": "node --test --experimental-test-coverage --test-coverage-lines=80 --test-coverage-functions=80 --test-coverage-branches=80 src/*.test.mjs", "lint": "eslint src" },
+  "dependencies": { "zod": "^4.0.0" },
+  "devDependencies": { "typescript": "^5.9.0" }
+}
