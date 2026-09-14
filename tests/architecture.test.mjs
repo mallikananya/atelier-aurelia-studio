@@ -58,3 +58,37 @@ test("runtime storage boundary does not use filesystem paths as durable truth", 
   assert.match(storageSource, /interface BlobStore/);
   assert.match(storageSource, /interface ProjectStore/);
 });
+
+test("Phase 1 provider decisions and simplifications are recorded", async () => {
+  const adr = await readFile(
+    path.join(repositoryRoot, "docs/adr/0003-phase-1-platform.md"),
+    "utf8",
+  );
+
+  for (const requiredDecision of [
+    "Supabase Auth",
+    "Supabase Postgres",
+    "AWS S3",
+    "MinIO",
+    "Trigger.dev Cloud v4",
+    "invite-only",
+    "Block Public Access",
+    "conditional no-overwrite",
+  ]) {
+    assert.match(adr, new RegExp(requiredDecision.replace(".", "\\."), "i"));
+  }
+
+  assert.match(adr, /AWS KMS[^\n]*deferred/i);
+  assert.match(adr, /single-owner/i);
+  assert.match(adr, /managed backups/i);
+  assert.doesNotMatch(adr, /secret_records/i);
+});
+
+test("Phase 1 scope documents the durable browser-close acceptance flow", async () => {
+  const plan = await readFile(path.join(repositoryRoot, "docs/IMPLEMENTATION_PLAN.md"), "utf8");
+
+  assert.match(plan, /Run Test Build/);
+  assert.match(plan, /browser closure/i);
+  assert.match(plan, /immutable dummy artifact/i);
+  assert.match(plan, /Do not begin Phase 2/i);
+});
