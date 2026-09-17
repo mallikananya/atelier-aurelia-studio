@@ -1,4 +1,7 @@
-export default function SettingsPage() {
+import { requireOwner } from "@/lib/auth/session";
+
+export default async function SettingsPage() {
+  await requireOwner("/settings");
   return <>
     <div className="eyebrow">Configuration</div>
     <h1>Settings</h1>

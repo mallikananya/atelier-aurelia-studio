@@ -30,11 +30,20 @@ test("root scripts expose local infrastructure and Phase 1 validation", async ()
 
 test("local Supabase authentication is private and redirect-scoped", async () => {
   const config = await text("supabase/config.toml");
+  const invite = await text("supabase/templates/invite.html");
+  const magicLink = await text("supabase/templates/magic_link.html");
 
   assert.match(config, /site_url\s*=\s*"http:\/\/127\.0\.0\.1:3000"/);
-  assert.match(config, /enable_signup\s*=\s*false/);
+  assert.match(config, /\[auth\][\s\S]*?enable_signup\s*=\s*false/);
+  assert.match(config, /\[auth\.email\][\s\S]*?enable_signup\s*=\s*true/);
   assert.match(config, /enable_anonymous_sign_ins\s*=\s*false/);
   assert.match(config, /additional_redirect_urls\s*=\s*\["http:\/\/127\.0\.0\.1:3000\/auth\/confirm"\]/);
+  assert.match(config, /auth\.email\.template\.invite/);
+  assert.match(config, /auth\.email\.template\.magic_link/);
+  for (const template of [invite, magicLink]) {
+    assert.match(template, /TokenHash/);
+    assert.doesNotMatch(template, /ConfirmationURL/);
+  }
 });
 
 test("local object storage enables private versioned MinIO objects", async () => {

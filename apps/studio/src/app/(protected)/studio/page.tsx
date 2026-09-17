@@ -1,4 +1,7 @@
-export default function StudioPage() {
+import { requireOwner } from "@/lib/auth/session";
+
+export default async function StudioPage() {
+  await requireOwner("/studio");
   return (
     <>
       <div className="eyebrow">Creative Director</div>

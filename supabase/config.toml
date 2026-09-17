@@ -31,7 +31,15 @@ enable_anonymous_sign_ins = false
 enable_manual_linking = false
 
 [auth.email]
-enable_signup = false
+enable_signup = true
 enable_confirmations = true
 double_confirm_changes = true
 max_frequency = "1m"
+
+[auth.email.template.invite]
+subject = "Your Atelier Aurelia invitation"
+content_path = "./supabase/templates/invite.html"
+
+[auth.email.template.magic_link]
+subject = "Your Atelier Aurelia sign-in link"
+content_path = "./supabase/templates/magic_link.html"
