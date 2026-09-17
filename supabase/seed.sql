@@ -1,0 +1,2 @@
+-- The private owner is invited through Supabase Auth. Phase 1 intentionally
+-- contains no shared production seed data, templates, or creative catalogs.

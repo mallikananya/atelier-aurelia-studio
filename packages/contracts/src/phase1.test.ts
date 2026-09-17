@@ -64,7 +64,7 @@ describe("Phase 1 contracts", () => {
   });
 
   it("requires artifact SHA-256 provenance and immutable storage identity", () => {
-    const result = ArtifactRecordV1.safeParse({
+    const artifact = {
       id: ids.artifact,
       accountId: ids.account,
       productId: ids.product,
@@ -75,11 +75,15 @@ describe("Phase 1 contracts", () => {
       sha256: "b".repeat(64),
       sizeBytes: 128,
       mediaType: "text/plain",
+      storageBucket: "atelier-aurelia-artifacts",
       storageKey: `accounts/${ids.account}/products/${ids.product}/revisions/${ids.revision}/artifacts/${ids.artifact}/payload.txt`,
       storageVersionId: "minio-version-id",
       createdAt: "2026-09-14T12:00:00.000Z",
-    });
+    };
 
-    expect(result.success).toBe(true);
+    expect(ArtifactRecordV1.safeParse(artifact).success).toBe(true);
+    expect(ArtifactRecordV1.safeParse({ ...artifact, state: "pending" }).success).toBe(false);
+    expect(ArtifactRecordV1.safeParse({ ...artifact, sizeBytes: 0 }).success).toBe(false);
+    expect(ArtifactRecordV1.safeParse({ ...artifact, storageBucket: "" }).success).toBe(false);
   });
 });
