@@ -163,6 +163,31 @@ select is((select count(*) from public.job_attempts),0::bigint,'other tenant can
 select is((select count(*) from public.job_events),0::bigint,'other tenant cannot see job events');
 select is((select count(*) from public.audit_events where account_id=pg_temp.id('account_a')),0::bigint,'other tenant cannot see audit history');
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);
+-- Isolate delivered-workflow requeue from attempt exhaustion and uncleared terminal fields.
+insert into fixture select 'job_delivered',job_id from public.enqueue_phase1_test_build(pg_temp.id('product_a'),pg_temp.id('revision_a2'),'m4-delivered-requeue-key');
+set local role atelier_worker;
+with claim as (select * from private.worker_claim_outbox('30000000-0000-4000-8000-000000000001'))
+insert into fixture select 'outbox_delivered',outbox_id from claim union all select 'lease_delivered',lease_token from claim;
+select private.worker_bind_run(pg_temp.id('outbox_delivered'),pg_temp.id('lease_delivered'),'m4-delivered-requeue-run');
+insert into fixture values('attempt_delivered',private.worker_start_attempt(pg_temp.id('job_delivered'),'delivered-attempt-1'));
+select private.worker_fail_attempt(pg_temp.id('job_delivered'),pg_temp.id('attempt_delivered'),'permanent','Final provider failure',true);
+reset role;
+select ok((select attempt_count < max_attempts from public.jobs where id=pg_temp.id('job_delivered')),'delivered requeue fixture retains attempt budget');
+select throws_ok($$update public.jobs set status='queued', finished_at=null, error_code=null, error_summary=null where id=pg_temp.id('job_delivered')$$,'55000',null,'delivered workflow cannot be stranded even with cleared terminal fields and remaining budget');
+select is((select status from public.jobs where id=pg_temp.id('job_delivered')),'failed','rejected delivered requeue leaves job failed');
+select is((select state from public.workflow_outbox where id=pg_temp.id('outbox_delivered')),'delivered','rejected requeue preserves delivery receipt');
+set local role authenticated;
+select is((select job_id from public.enqueue_phase1_test_build(pg_temp.id('product_a'),pg_temp.id('revision_a2'),'m4-delivered-requeue-key')),pg_temp.id('job_delivered'),'failed enqueue replay returns original job');
+select is((select was_created from public.enqueue_phase1_test_build(pg_temp.id('product_a'),pg_temp.id('revision_a2'),'m4-delivered-requeue-key')),false,'failed enqueue replay does not create work');
+reset role;
+select is((select count(*) from public.workflow_outbox where job_id=pg_temp.id('job_delivered')),1::bigint,'failed replay preserves exactly one outbox record');
+select is((select state from public.workflow_outbox where job_id=pg_temp.id('job_delivered')),'delivered','failed replay does not rearm delivered work');
+set local role atelier_worker;
+select throws_ok($$select private.worker_bind_run(pg_temp.id('outbox_delivered'),pg_temp.id('lease_delivered'),'m4-delivered-requeue-run')$$,'55000',null,'old delivery lease cannot bind again');
+select is((select count(*) from private.worker_claim_outbox('30000000-0000-4000-8000-000000000001')),0::bigint,'failed replay does not cause duplicate dispatch');
+reset role;
+select is((select count(*) from public.workflow_bindings where job_id=pg_temp.id('job_delivered')),1::bigint,'delivery replay preserves one workflow binding');
+set local role authenticated;
 insert into fixture select 'job_dispatch',job_id from public.enqueue_phase1_test_build(pg_temp.id('product_a'),pg_temp.id('revision_a2'),'m4-dispatch-exhaustion-key');
 set local role atelier_worker;
 with claim as (select * from private.worker_claim_outbox('30000000-0000-4000-8000-000000000001'))
@@ -190,6 +215,8 @@ where id=pg_temp.id('outbox_dispatch');
 select lives_ok($$update public.jobs set status='queued', finished_at=null, error_code=null, error_summary=null where id=pg_temp.id('job_dispatch')$$,'prepared unbound dispatch can follow approved requeue transition');
 set local role atelier_worker;
 select is((select job_id from private.worker_claim_outbox('30000000-0000-4000-8000-000000000001')),pg_temp.id('job_dispatch'),'prepared requeue has a real claimable dispatch path');
+select is((select count(*) from private.worker_claim_outbox('30000000-0000-4000-8000-000000000002')),0::bigint,'prepared requeue cannot be claimed twice while leased');
 reset role;
+select is((select count(*) from public.workflow_outbox where job_id=pg_temp.id('job_dispatch')),1::bigint,'prepared requeue reuses one outbox identity');
 select * from finish();
 rollback;
