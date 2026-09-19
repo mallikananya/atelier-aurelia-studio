@@ -79,4 +79,25 @@ session handling, validated callback/redirect handling, protected Studio routes,
 logout, and authorization tests for the invited owner, anonymous sessions, and users
 without membership. It must retain disabled public signup and keep credentials off the
 client. Product UI, object-storage adapters, and durable workflow execution follow their
-own milestones. Milestone 5 requires explicit approval before implementation.
+own milestones. Milestone 5 is complete.
+
+## Milestone 6 Products flow
+
+The owner can create a named product from `/products` and open its persisted detail
+at `/products/[productId]`. The library reads account-scoped rows with the owner's
+session and RLS. Creation calls `create_product_with_revision` through an authenticated,
+same-origin Server Action; PostgreSQL owns Revision 1, provenance, schema and hash.
+No migration, privileged runtime client, product taxonomy or later workspace is added.
+
+The form disables submission while pending and redirects after success. The existing
+command has no idempotency key: replaying a separate request creates another product,
+each with exactly one Revision 1. The application never automatically retries an
+uncertain write and asks the owner to check the library before trying again.
+
+For local acceptance, reset the disposable development database, run `npm run db:test`,
+then run `npm run test:e2e` with `NEXT_PUBLIC_APP_URL`,
+`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` and local
+`SUPABASE_SERVICE_ROLE_KEY` set. The last key is used only for local test fixture
+provisioning; browser and persistence assertions use authenticated public-key clients.
+Tests refuse an unrelated existing owner and never delete fixture data. The empty-state
+case requires a fresh reset. The full suite contains nine auth and six Products cases.

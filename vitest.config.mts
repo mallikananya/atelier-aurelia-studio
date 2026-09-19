@@ -10,6 +10,8 @@ export default defineConfig({
         "packages/contracts/src/phase1.ts",
         "packages/core/src/jobs.ts",
         "packages/storage/src/artifact-keys.ts",
+        "apps/studio/src/lib/products/service.ts",
+        "apps/studio/src/app/(protected)/products/actions.ts",
       ],
       thresholds: {
         branches: 80,

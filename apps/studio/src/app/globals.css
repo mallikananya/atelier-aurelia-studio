@@ -46,3 +46,17 @@ a:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid 
 .auth-form .primary { min-height: 48px; margin-top: 6px; }
 .auth-message { padding: 14px 16px; border-left: 3px solid var(--wine); background: var(--paper); font: 14px/1.6 ui-sans-serif, system-ui, sans-serif; }
 .auth-note { margin-top: 24px; font: 13px/1.6 ui-sans-serif, system-ui, sans-serif; color: var(--muted); }
+
+.product-form { display: grid; gap: 12px; max-width: 620px; margin-top: 32px; padding: 24px; border: 1px solid var(--line); border-radius: 18px; background: var(--panel); }
+.product-form h2 { margin: 0 0 8px; font-weight: 400; }
+.product-form label, .product-form input { font-family: ui-sans-serif, system-ui, sans-serif; }
+.product-form input { width: 100%; min-height: 48px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink); }
+.product-form .auth-note { margin: 0; }
+.product-form .primary { justify-self: start; min-height: 44px; }
+button:disabled { opacity: .65; cursor: wait; }
+.product-empty, .revision-card { margin-top: 32px; }
+.product-link { color: var(--wine); text-decoration: underline; text-underline-offset: 4px; }
+.product-heading { margin-top: 32px; }
+.product-metadata { font: 14px/1.6 ui-sans-serif, system-ui, sans-serif; }
+.product-metadata dt { color: var(--muted); margin-top: 18px; }
+.product-metadata dd { margin: 4px 0 0; overflow-wrap: anywhere; }

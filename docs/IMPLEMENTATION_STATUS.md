@@ -1,6 +1,6 @@
 # Implementation status and handoff
 
-Snapshot: 2026-09-17. Milestones 1–5 are complete; do not treat the remaining Phase 1 acceptance flow as implemented. This document records repository evidence and resume boundaries. Product requirements and architecture remain authoritative in [PRD](PRD.md), [Architecture](ARCHITECTURE.md), [Implementation plan](IMPLEMENTATION_PLAN.md), and [ADR 0003](adr/0003-phase-1-platform.md).
+Snapshot: 2026-09-19. Milestones 1–6 are complete; do not treat the remaining Phase 1 acceptance flow as implemented. This document records repository evidence and resume boundaries. Product requirements and architecture remain authoritative in [PRD](PRD.md), [Architecture](ARCHITECTURE.md), [Implementation plan](IMPLEMENTATION_PLAN.md), and [ADR 0003](adr/0003-phase-1-platform.md).
 
 ## Intended product and approved architecture
 
@@ -20,7 +20,7 @@ Domain boundaries:
 
 ## Completed milestones
 
-The first three labels below summarize the corresponding commits; the repository explicitly names Milestones 4 and 5 in [Local development](LOCAL_DEVELOPMENT.md). Milestones are slices of Phase 1, not the numbered product phases in the implementation plan.
+The first three labels below summarize the corresponding commits; the repository explicitly names Milestones 4–6 in [Local development](LOCAL_DEVELOPMENT.md). Milestones are slices of Phase 1, not the numbered product phases in the implementation plan.
 
 | Milestone | Status and evidence |
 | --- | --- |
@@ -29,6 +29,7 @@ The first three labels below summarize the corresponding commits; the repository
 | 3 — Domain contracts | Complete: `9d3bf8f`, Phase 1 Zod contracts, state machine and provider-neutral ports. |
 | 4 — Database persistence | Complete: `2893e83`, three initial migrations, 13 tables, transactional commands, RLS, worker APIs and pgTAP. |
 | 5 — Invite-only authentication | Complete: `78872bf`, server sessions, protected routes, magic-link confirmation, logout, unit and browser tests. |
+| 6 — Persisted Products | Complete: authenticated library, name-only creation through the existing transactional command, immutable current-revision detail, unit/browser/database acceptance tests. |
 
 Reliability follow-up: `6321259` adds 13 behavioral assertions for delivered-outbox requeue and replay safety. The alleged production defect was **not reproduced**: `2893e83` already includes the requeue guard. No production SQL or migration was changed in this follow-up.
 
@@ -56,25 +57,41 @@ RLS scopes records by account membership. Authenticated users can read authorize
 
 ## Validation and current repository state
 
-At this handoff, implementation and regression commits above were pushed to `origin/main` and verified equal to local `main`. This document is delivered in its own documentation-only commit; obtain its hash with `git log -1 -- docs/IMPLEMENTATION_STATUS.md`. Recheck live status rather than assuming this snapshot stays current.
+Milestone 6 continues from `7441ae6` on `main`. Find its implementation commit with
+`git log -1 -- apps/studio/src/lib/products/service.ts`; recheck live branch status.
 
-Validation performed for the reliability follow-up:
+Validation for Milestone 6:
 
-- Clean local `npm run db:reset`; full pgTAP **136/136**.
-- `npm test`: 18 root repository tests, 35 unit tests, 17 workspace tests passed.
-- Type checking, lint, architecture guardrails and `git diff --check` passed.
-- Production build passed with explicit public auth configuration using a build-only placeholder key. A build without required auth environment variables fails; this checkout has no `.env`.
+- Clean local `npm run db:reset`; full pgTAP **173/173** (37 new Products assertions).
+- Repository **18/18**, unit **66/66**, workspace **17/17** tests pass.
+- Playwright **15/15** against real local Supabase: nine auth and six Products cases.
+- Coverage gate passes: **97.36% lines, 96.22% branches, 100% functions, 97.84% statements** in the Vitest configured scope, now including Products service/action; root/workspace coverage gates also pass.
+- Typecheck, lint, architecture guardrails and `git diff --check` pass.
+- Configured production build passes with real local public Supabase configuration. This is build validation, not a live production deployment test.
 - `npm audit --omit=dev`: zero vulnerabilities.
 
-Milestone 5 has nine auth browser cases in `tests/e2e/auth.spec.ts`; its prior full validation was supplied at handoff, and those browser cases were not rerun for this SQL-test-only follow-up. Do not describe a placeholder-config build as a live authentication test.
+The Products library no longer renders example products. Name-only creation uses an
+owner-checked, same-origin Server Action and the existing database command. Account-scoped
+reads use the authenticated session and RLS; malformed, missing and cross-account detail
+IDs share not-found behavior. The detail exposes current revision identity, number, schema,
+hash and saved timestamp. No schema migration or architectural boundary change was needed.
 
-For future changes, run relevant unit/integration tests and critical-flow Playwright tests. Database changes require clean reset plus full pgTAP, including RLS and replay behavior. Run typecheck, lint, build, guardrails, production dependency audit and diff checks before release. `npm run test:coverage` enforces 80% coverage gates. Local database reset is destructive to development data; pgTAP fixtures themselves roll back.
+Creation has no database replay key. Pending submission is disabled, success redirects,
+and uncertain writes are never retried automatically. Separate replayed requests may
+create distinct products; each still has exactly one immutable Revision 1. Tests pin this
+existing limitation rather than claim exactly-once request processing.
 
 ## Deferred work and next scope
 
-The repository does not explicitly number a “Milestone 6.” The next Phase 1 item after authentication in [Implementation plan](IMPLEMENTATION_PLAN.md#phase-1--persistence-auth-projects-durable-jobs) is the **single-owner Products flow and immutable revision 1 creation**, consistent with the product-UI boundary in Local development. Treat that as the next slice to scope, not permission to implement all remaining Phase 1 work. The current Products page still displays examples rather than persisted products. **No Milestone 6 work was started.** Phase 6 in the broader plan means Listing Studio and is unrelated to this next slice.
+Milestone 6 completes only the single-owner Products and immutable Revision 1 slice of
+Phase 1. It does not implement the later Phase 5 Product Workspace or Phase 6 Listing Studio.
 
-Object-storage adapters, the real Trigger.dev worker/dispatcher, persisted product UI, authorized downloads and the browser-close/redeploy durability acceptance flow remain ahead. CI currently runs static/unit/coverage/build guardrails but does not provision services or run pgTAP/auth E2E. Production provider setup and live durability are not verified by this handoff. README's Phase 0 status and Local development's pre-implementation Milestone 5 approval sentence are historical; use this status snapshot for completion state.
+The next repository slice is private S3/local MinIO artifact writes and authorized downloads,
+with server-generated keys, SHA-256 verification, conditional no-overwrite and versioning.
+Stop before implementing it. Trigger.dev worker/dispatcher integration, test-build UI, and
+browser-close/redeploy durability acceptance remain later Phase 1 work. Production provider
+setup and live durability are not verified. CI currently runs static/unit/coverage/build
+guardrails but does not provision services or run pgTAP/browser tests.
 
 Deferred by ADR: MFA UI, team/workspace administration, account-scoped secrets/KMS, Object Lock, cross-region replication and advanced recovery automation. Do not add these speculatively.
 
