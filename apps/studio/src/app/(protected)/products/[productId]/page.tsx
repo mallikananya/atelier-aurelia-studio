@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { requireOwner } from "@/lib/auth/session";
 import { createAuthClient } from "@/lib/auth/server";
 import { productDetail } from "@/lib/products/service";
+import { listRevisionArtifacts } from "@/lib/products/downloads";
 
 export default async function ProductPage({ params }: { params: Promise<{ productId: string }> }) {
   await requireOwner("/products");
@@ -11,6 +12,7 @@ export default async function ProductPage({ params }: { params: Promise<{ produc
   if (result.kind === "missing" || result.kind === "denied" || result.kind === "anonymous") notFound();
   if (result.kind !== "ok") return <><h1>Product unavailable</h1><p className="auth-message" role="alert">We could not load this product. Refresh to try again.</p><Link href="/products">Back to Products</Link></>;
   const { product, revision } = result;
+  const artifacts = await listRevisionArtifacts(await createAuthClient(), product.id, revision.id);
   return <>
     <Link className="product-link" href="/products">← Back to Products</Link>
     <div className="eyebrow product-heading">Product</div>
@@ -27,6 +29,13 @@ export default async function ProductPage({ params }: { params: Promise<{ produc
         <dt>Content SHA-256</dt><dd>{revision.content_sha256}</dd>
         <dt>Saved at</dt><dd>{revision.created_at}</dd>
       </dl>
+      {artifacts.kind === "ok" && artifacts.artifacts.length > 0 && <>
+        <h3>Artifacts</h3>
+        <ul>{artifacts.artifacts.map(artifact => <li key={artifact.id}>
+          <a href={`/artifacts/${artifact.id}/download`} rel="noreferrer">Download artifact ({artifact.size_bytes} bytes)</a>
+        </li>)}</ul>
+      </>}
+      {artifacts.kind === "unavailable" && <p role="alert">Artifacts could not be loaded. Refresh to try again.</p>}
     </section>
   </>;
 }

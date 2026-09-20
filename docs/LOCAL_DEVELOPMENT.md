@@ -101,3 +101,120 @@ then run `npm run test:e2e` with `NEXT_PUBLIC_APP_URL`,
 provisioning; browser and persistence assertions use authenticated public-key clients.
 Tests refuse an unrelated existing owner and never delete fixture data. The empty-state
 case requires a fresh reset. The full suite contains nine auth and six Products cases.
+
+## Milestone 7 private artifact storage
+
+`packages/storage` implements the existing `BlobStore` port using the AWS S3 SDK.
+The server derives `accounts/<account>/products/<product>/revisions/<revision>/artifacts/<artifact>/payload.txt`
+from trusted UUIDs. `uploadVerifiedArtifact` snapshots bytes, calculates SHA-256, uses
+`If-None-Match: *` and a SHA-256 transport checksum, requires a non-null version, and reads that exact version back.
+It compares content type, metadata digest, declared size, streamed size and the hash
+of the actual read-back bytes. ETags are never interpreted as SHA-256. Only successful
+verification invokes the caller's database completion boundary. The existing
+`private.worker_complete_test_build` command remains the metadata authority; no
+schema migration is required.
+
+There is deliberately no production upload UI, worker, dispatcher or generator in
+this slice. The deterministic acceptance fixture creates a job/attempt through the
+existing commands, uploads actual bytes to MinIO, and completes metadata as
+`atelier_worker`. Its local Docker administrator is used only to assume the existing
+worker role and provision test accounts; runtime privileges are unchanged. Failed
+upload and fault-injected corrupt/incorrect-size readbacks are checked against real
+Postgres to confirm no available artifact appears. Fault injection is not a claim
+that MinIO corrupted stored data.
+
+Authenticated Product detail shows a minimal download link for available artifacts
+on its current revision. `/artifacts/<artifactId>/download` verifies the owner session,
+queries the account-scoped artifact under RLS, checks canonical identity and configured
+bucket, and only then signs the stored version. Buckets and keys cannot be supplied
+by the browser. Missing, malformed and unauthorized requests return the same 404;
+backend failures return a sanitized 503. Redirects use `private, no-store` and
+`no-referrer`. The signed response forces attachment download and private, no-store caching.
+
+### Local configuration and validation
+
+Use distinct randomly generated local credentials for `MINIO_ROOT_USER` /
+`MINIO_ROOT_PASSWORD` (administration) and `AWS_ACCESS_KEY_ID` /
+`AWS_SECRET_ACCESS_KEY` (runtime). Do not reuse production credentials. `infra:start`
+creates a private, versioned bucket and grants the runtime user only GetObject,
+GetObjectVersion and PutObject beneath `accounts/`; it cannot delete objects or
+administer the service. `infra/artifact-runtime-policy.json` is the local policy
+template. Ports bind only to loopback. Both pinned MinIO images now use Quay because
+the previously configured Docker Hub images could not be pulled during acceptance.
+
+Set the existing endpoint, region, bucket and path-style variables from `.env.example`.
+`ARTIFACT_SIGNED_URL_TTL_SECONDS` defaults to 60 and must be an integer from 1 to 300.
+Endpoint credentials, non-HTTPS remote endpoints and malformed configuration fail
+closed. Local HTTP loopback is supported. The app reads storage configuration only
+in a server-only module after authorization; provider secrets never enter UI props.
+
+With the environment loaded in your shell (npm does not load the root `.env` for
+all test commands):
+
+```sh
+npm run infra:start
+npm run db:reset
+npm run db:test
+npm test
+npm run test:storage
+npm run test:e2e
+npm run test:coverage
+npm run typecheck
+npm run lint
+npm run build
+npm run guardrails
+npm audit --omit=dev
+git diff --check
+```
+
+The full browser suite must start after a clean disposable database reset. It runs
+Auth and Products acceptance before storage fixtures, preserving the existing empty
+Products assertion. Storage fixtures leave immutable data in place; do not treat a
+second full run without reset as an empty-account test. The browser suite also needs
+the local Supabase service-role key solely for test Auth/account provisioning, as
+in Milestones 5–6. Real MinIO tests require an explicitly local storage endpoint;
+they fail rather than silently skip when unavailable. No live AWS test is implied.
+
+### Production S3 requirements
+
+Provision a private general-purpose S3 bucket with versioning **Enabled**, all four
+Block Public Access settings enabled, and Bucket owner enforced object ownership
+(ACLs disabled). Omit `OBJECT_STORAGE_ENDPOINT` and use the AWS region; set
+`OBJECT_STORAGE_FORCE_PATH_STYLE=false`. Use short-lived role credentials through
+the SDK default credential chain where available, or server-only platform secret
+configuration. A temporary session token may use `AWS_SESSION_TOKEN`.
+
+Grant runtime identities only the required prefix-scoped `s3:PutObject`,
+`s3:GetObject` and `s3:GetObjectVersion` permissions. They must not have object or
+version deletion, bucket policy/ACL administration, or permission to suspend
+versioning. Do not attach broader policies to the local runtime user either.
+Production bucket policy should deny non-TLS access and enforce conditional
+PutObject writes (`s3:if-none-match`) as described in
+[AWS conditional-write enforcement](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes-enforce.html).
+`If-None-Match: *` checks the current version; deletion markers could allow key
+reuse, which is why runtime deletion and lifecycle deletion of artifact identities
+must remain disabled. Versioning alone does not enforce no-overwrite.
+
+This milestone does not provision or audit a live AWS account. Bucket privacy,
+versioning, IAM and policy deployment must be verified before production use.
+MinIO acceptance verifies actual local privacy and denied deletion; the SDK adapter
+never sets public ACLs or grants anonymous access.
+
+### Failure and recovery limits
+
+Storage and Postgres do not share a transaction. A failed verification or database
+completion can leave a private unreferenced object. The adapter never deletes it or
+retries an uncertain write automatically, and a repeated put to the same existing
+key fails, even for identical bytes. Recovery/reconciliation belongs to the later
+durable workflow slice and must preserve immutable identities. Database completion
+itself retains its existing exact-metadata replay behavior.
+
+Real MinIO concurrent-write acceptance reproduced a stale keep-alive socket reset
+after a conditional rejection. Storage requests now use fresh TCP/TLS connections
+with one attempt; this deliberately trades connection reuse for predictable
+Phase 1 behavior without retrying uncertain writes.
+
+Signed URLs are bearer capabilities until expiry; logout or later membership changes
+do not revoke a URL already issued. Do not log or persist them, and disable capture
+of download response headers in production observability. Object Lock, cross-region
+recovery, user uploads, generation and durable test builds remain deferred.

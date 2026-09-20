@@ -1,6 +1,6 @@
 # Implementation status and handoff
 
-Snapshot: 2026-09-19. Milestones 1–6 are complete; do not treat the remaining Phase 1 acceptance flow as implemented. This document records repository evidence and resume boundaries. Product requirements and architecture remain authoritative in [PRD](PRD.md), [Architecture](ARCHITECTURE.md), [Implementation plan](IMPLEMENTATION_PLAN.md), and [ADR 0003](adr/0003-phase-1-platform.md).
+Snapshot: 2026-09-20. Milestones 1–7 are complete; do not treat the remaining Phase 1 acceptance flow as implemented. This document records repository evidence and resume boundaries. Product requirements and architecture remain authoritative in [PRD](PRD.md), [Architecture](ARCHITECTURE.md), [Implementation plan](IMPLEMENTATION_PLAN.md), and [ADR 0003](adr/0003-phase-1-platform.md).
 
 ## Intended product and approved architecture
 
@@ -14,7 +14,7 @@ Domain boundaries:
 - `packages/contracts`: versioned Zod contracts, provider-neutral records and ports.
 - `packages/core`: state transitions, orchestration and release semantics.
 - `packages/ai`: AI roles and structured generation boundaries.
-- `packages/storage`: repository/object-storage boundaries; concrete storage work remains ahead.
+- `packages/storage`: provider-neutral object-storage port and verified private S3/MinIO adapter.
 - `packages/etsy`: closed draft-only marketplace boundary.
 - `supabase`: durable schema, transactional commands, RLS and private worker functions.
 
@@ -29,7 +29,8 @@ The first three labels below summarize the corresponding commits; the repository
 | 3 — Domain contracts | Complete: `9d3bf8f`, Phase 1 Zod contracts, state machine and provider-neutral ports. |
 | 4 — Database persistence | Complete: `2893e83`, three initial migrations, 13 tables, transactional commands, RLS, worker APIs and pgTAP. |
 | 5 — Invite-only authentication | Complete: `78872bf`, server sessions, protected routes, magic-link confirmation, logout, unit and browser tests. |
-| 6 — Persisted Products | Complete: authenticated library, name-only creation through the existing transactional command, immutable current-revision detail, unit/browser/database acceptance tests. |
+| 6 — Persisted Products | Complete: `0f6dae3`, authenticated library, name-only creation through the existing transactional command, immutable current-revision detail, unit/browser/database acceptance tests. |
+| 7 — Private immutable storage | Complete: S3-compatible private MinIO adapter, canonical conditional writes, exact-version byte/hash verification before database completion, owner/RLS-authorized short-lived downloads, and real service/browser acceptance. |
 
 Reliability follow-up: `6321259` adds 13 behavioral assertions for delivered-outbox requeue and replay safety. The alleged production defect was **not reproduced**: `2893e83` already includes the requeue guard. No production SQL or migration was changed in this follow-up.
 
@@ -55,45 +56,94 @@ Server-side Supabase sessions use HttpOnly cookies, SameSite=Lax and Secure on H
 
 RLS scopes records by account membership. Authenticated users can read authorized rows and execute closed product/revision/enqueue commands, not mutate tables directly. `atelier_worker` is a NOLOGIN role limited to private worker functions; a future worker adapter needs a dedicated server-only login capable of assuming it. Do not substitute the service-role key for this permission boundary.
 
-## Validation and current repository state
+## Milestone 7 implementation and handoff
 
-Milestone 6 continues from `7441ae6` on `main`. Find its implementation commit with
-`git log -1 -- apps/studio/src/lib/products/service.ts`; recheck live branch status.
+Started on clean `main` with `HEAD` and `origin/main` at `0f6dae3`; an interrupted
+session left the in-progress Milestone 7 files, which were inspected and preserved on
+resume. Find the completed implementation commit with
+`git log -1 -- packages/storage/src/s3-blob-store.ts`; recheck live branch/status.
 
-Validation for Milestone 6:
+The existing BlobStore port now has an S3-compatible adapter. Keys are server-derived
+from account/product/revision/artifact UUIDs. Writes snapshot the bytes, calculate
+SHA-256, use conditional no-overwrite, require a non-null version ID, and verify the
+exact stored version's content type, digest metadata, length and streamed byte hash.
+Only then does the upload helper invoke the existing database completion boundary.
+Uploads also send a SHA-256 transport checksum. ETags are not used as hashes. No migration was needed: Milestone 4's completion
+command already owns immutable artifact/provenance metadata and job completion.
 
-- Clean local `npm run db:reset`; full pgTAP **173/173** (37 new Products assertions).
-- Repository **18/18**, unit **66/66**, workspace **17/17** tests pass.
-- Playwright **15/15** against real local Supabase: nine auth and six Products cases.
-- Coverage gate passes: **97.36% lines, 96.22% branches, 100% functions, 97.84% statements** in the Vitest configured scope, now including Products service/action; root/workspace coverage gates also pass.
-- Typecheck, lint, architecture guardrails and `git diff --check` pass.
-- Configured production build passes with real local public Supabase configuration. This is build validation, not a live production deployment test.
-- `npm audit --omit=dev`: zero vulnerabilities.
+The owner can download an available artifact from Product revision detail. The route
+accepts only an artifact ID, authorizes through the authenticated owner and RLS,
+checks canonical identity and configured bucket, and signs the exact stored version.
+Expiry defaults to 60 seconds and is limited to 300 seconds. Unauthorized, missing
+and malformed IDs share 404 behavior. Errors and redirect caching are controlled;
+secrets and bucket/key input are never accepted from client code.
 
-The Products library no longer renders example products. Name-only creation uses an
-owner-checked, same-origin Server Action and the existing database command. Account-scoped
-reads use the authenticated session and RLS; malformed, missing and cross-account detail
-IDs share not-found behavior. The detail exposes current revision identity, number, schema,
-hash and saved timestamp. No schema migration or architectural boundary change was needed.
+Local MinIO setup preserves private versioning and now provisions distinct runtime
+credentials without deletion or administration permissions. Pinned images use the
+working Quay registry. Production requires private S3, Block Public Access,
+versioning, restricted IAM and conditional-write bucket policy; this is not a live
+AWS deployment or production-security audit.
 
-Creation has no database replay key. Pending submission is disabled, success redirects,
-and uncertain writes are never retried automatically. Separate replayed requests may
-create distinct products; each still has exactly one immutable Revision 1. Tests pin this
-existing limitation rather than claim exactly-once request processing.
+Acceptance creates deterministic fixture bytes independently of any durable worker.
+It uses real MinIO and the existing database commands under `atelier_worker`, with
+local administrative access only for fixture setup/role assumption. Corruption and
+size failure injection tests verify that real Postgres metadata stays absent. No
+Trigger.dev execution or fake production generation was introduced.
 
-## Deferred work and next scope
+## Validation
 
-Milestone 6 completes only the single-owner Products and immutable Revision 1 slice of
-Phase 1. It does not implement the later Phase 5 Product Workspace or Phase 6 Listing Studio.
+Validation completed for Milestone 7:
 
-The next repository slice is private S3/local MinIO artifact writes and authorized downloads,
-with server-generated keys, SHA-256 verification, conditional no-overwrite and versioning.
-Stop before implementing it. Trigger.dev worker/dispatcher integration, test-build UI, and
-browser-close/redeploy durability acceptance remain later Phase 1 work. Production provider
-setup and live durability are not verified. CI currently runs static/unit/coverage/build
-guardrails but does not provision services or run pgTAP/browser tests.
+- Clean local database reset and full pgTAP: **195/195** (22 new storage assertions).
+- Full Playwright: **21/21** against real local Supabase and MinIO: nine auth,
+  six Products and six storage cases, including a separate cross-account owner.
+- Repository **19/19**, unit **129/129** (including **32 adapter** tests), workspace **17/17**.
+- Real MinIO integration **6/6**: private verified bytes, exact versions, sequential
+  overwrite rejection, concurrent first-writer exclusion, denied version/delete-marker
+  deletion, and signed capability expiration. Final storage browser rerun **6/6** also
+  exercises clicking the actual download link.
+- Coverage gate: **98.90% lines, 97.84% branches, 96.29% functions, 98.62% statements**
+  in the configured Vitest scope including the adapter/download service; repository
+  and workspace coverage gates pass.
+- Typecheck, lint, configured production build, architecture guardrails and
+  `git diff --check` pass. Production dependency audit: **zero vulnerabilities**.
+- Build uses local configuration; this is not a live AWS production test. Browser
+  bundle scan finds no configured runtime secrets. Security/correctness review found
+  no blocking authorization, immutability or provenance issues.
 
-Deferred by ADR: MFA UI, team/workspace administration, account-scoped secrets/KMS, Object Lock, cross-region replication and advanced recovery automation. Do not add these speculatively.
+## Known limitations and next scope
+
+Storage and Postgres cannot commit atomically. A failed verification or database
+completion may leave a private unreferenced object; it cannot create available
+metadata through this upload path. Uncertain writes are not automatically retried,
+and even identical-byte repeated puts to an existing key fail closed. The existing
+SQL completion command retains exact-metadata replay semantics. Later recovery must
+preserve immutable identity; no object cleanup/reconciliation workflow is added.
+
+Issued signed URLs are bearer capabilities until expiration; logout or membership
+changes do not revoke an already-issued URL. Do not log or persist capabilities.
+Runtime deletion and lifecycle deletion of artifact identities must stay disabled:
+S3 conditional writes check the current version, and delete markers could permit
+key reuse. Object Lock and stronger recovery governance remain deferred.
+
+Milestone 6's separate replayed product-creation requests can still create distinct
+products. Pending duplicates are blocked and uncertain writes are not retried. This
+behavior was not redesigned.
+
+Real MinIO concurrency testing exposed a stale keep-alive socket reset following a
+conditional-write rejection. The adapter uses fresh connections with one attempt,
+preserving no-retry semantics. This trades TCP/TLS connection reuse for predictable
+Phase 1 behavior; it does not weaken overwrite or integrity guarantees.
+
+Milestone 7 completes only private artifact storage and authorized downloads. The
+**next recommended slice is Milestone 8: real Trigger.dev Cloud v4 durable workflow/
+dispatcher and Phase 1 test-build execution**, followed by browser-close/redeploy
+acceptance. Do not treat those capabilities as implemented. Do not begin Phase 2 or
+the later Product Workspace. Production provider setup/live durability remain
+unverified. CI runs static/unit/coverage/build checks but does not provision local
+Supabase/MinIO or run pgTAP/browser acceptance.
+
+Operational details and commands are in [Local development](LOCAL_DEVELOPMENT.md#milestone-7-private-artifact-storage).
 
 ## Resume safely
 

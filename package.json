@@ -19,7 +19,8 @@
     "test:e2e": "playwright test",
     "test:coverage": "node --test --experimental-test-coverage --test-coverage-lines=80 --test-coverage-functions=80 --test-coverage-branches=80 tests/*.test.mjs && vitest run --coverage && npm run test:coverage --workspaces --if-present",
     "lint": "eslint tests eslint.config.mjs tools && npm run lint --workspaces --if-present",
-    "guardrails": "node tools/architecture-guardrails.mjs"
+    "guardrails": "node tools/architecture-guardrails.mjs",
+    "test:storage": "vitest run --config tests/storage/vitest.config.mts"
   },
   "engines": {
     "node": ">=22"

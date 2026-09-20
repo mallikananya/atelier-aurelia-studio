@@ -74,3 +74,14 @@ test("environment example separates public and server-only values", async () => 
 
   assert.doesNotMatch(environment, /^NEXT_PUBLIC_(?:DATABASE_URL|SUPABASE_SERVICE_ROLE_KEY|AWS_|TRIGGER_SECRET_KEY)/m);
 });
+
+test("local runtime storage credentials cannot administer or delete artifact bytes", async () => {
+  const compose = await text("infra/compose.yml");
+  assert.match(compose, /AWS_ACCESS_KEY_ID/);
+  assert.match(compose, /AWS_SECRET_ACCESS_KEY/);
+  assert.match(compose, /mc admin policy attach/);
+  const policy = JSON.parse(await text("infra/artifact-runtime-policy.json"));
+  const actions = policy.Statement.flatMap((statement) => statement.Action);
+  assert.deepEqual(actions.sort(), ["s3:GetObject", "s3:GetObjectVersion", "s3:PutObject"].sort());
+  assert.ok(policy.Statement.every((statement) => statement.Effect === "Allow"));
+});
