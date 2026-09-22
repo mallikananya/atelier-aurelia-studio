@@ -218,3 +218,124 @@ Signed URLs are bearer capabilities until expiry; logout or later membership cha
 do not revoke a URL already issued. Do not log or persist them, and disable capture
 of download response headers in production observability. Object Lock, cross-region
 recovery, user uploads, generation and durable test builds remain deferred.
+
+## Milestone 8 — durable Phase 1 execution
+
+`packages/workflows` is a separate server-side workspace using pinned Trigger.dev
+SDK **4.6.3**. PostgreSQL remains authoritative. The authenticated Product detail
+button only invokes the existing enqueue command. It derives a stable key from the
+persisted revision; repeated clicks reuse that job. The proof artifact is bounded
+plain-text JSON containing the immutable revision identity, name and database hash.
+It is not a finished generated product.
+
+The Cloud dispatcher polls the existing leased outbox every minute (25 claims per
+invocation). Each job uses a globally scoped Trigger idempotency key with 30-day TTL.
+Only the job UUID is sent as task payload. The returned run ID is bound under the
+outbox lease; the worker must match that binding before reading revision content.
+An acceptance-before-bind crash recovers via lease expiry and the same provider key.
+Even after provider key expiry, only the database-bound run may execute.
+
+Execution holds a per-job PostgreSQL session advisory lock. A forward migration
+adds a private provider-attempt fence; a newer retry retires an interrupted attempt,
+while old attempts cannot complete or mutate replacements. A same-attempt resumed
+invocation can proceed after its previous database session ends. Each invocation
+uses a new random immutable artifact ID; storage verification precedes the existing
+completion transaction. An uncertain database response is resolved by reading the
+job on replay. A committed success is never re-uploaded or failed.
+
+Partial uploads may leave private unreferenced objects. They are not overwritten,
+deleted, or exposed as available artifacts. A retry creates a new identity. This
+preserves Milestone 7's fail-closed immutable write and exact-version contracts.
+
+Builds have three provider attempts, a five-minute compute limit, and retry delays
+of at least 130 seconds to permit dispatch lease recovery. Cancellation/failure hooks
+reconcile terminal state. A separate five-minute Cloud schedule checks bound active
+runs if a hook was interrupted. A provider `COMPLETED` run without database success
+is a failure, never evidence of verified completion. No browser cancellation UI is
+added; an operator can cancel a bound run in Trigger. Final failed jobs remain
+terminal; use a new job identity for new work, never rearm a delivered outbox.
+
+### Cloud setup and the interactive dependency
+
+Create an organization/project at [Trigger.dev Cloud](https://cloud.trigger.dev),
+then copy the non-secret `proj_...` project reference from project settings.
+The repository configuration already exists; do not run an initializer that replaces
+it. Use [Trigger's setup guide](https://trigger.dev/docs/quick-start) for account
+onboarding. Set `TRIGGER_PROJECT_REF` in your private shell/CI environment before
+running workspace CLI commands. The deploy artifact is the workflows workspace;
+Next.js continues to deploy separately to Vercel.
+
+```sh
+npm run trigger:dev --workspace=@atelier-aurelia/workflows
+npm run trigger:deploy --workspace=@atelier-aurelia/workflows
+```
+
+These scripts use the matching pinned CLI via `npx`. CLI authentication uses an
+interactive browser login or a private `TRIGGER_ACCESS_TOKEN` in CI. Do not paste
+credentials into chat or commit them. Deployment details are in
+[Trigger's deployment guide](https://trigger.dev/docs/deployment/overview).
+
+Configure the following in the target Trigger environment's **Environment Variables**
+settings before deployment, separately for development/staging/production:
+
+| Variable | Where / purpose |
+| --- | --- |
+| `TRIGGER_PROJECT_REF` | Local deployment shell or CI; non-secret project selector. |
+| `TRIGGER_ACCESS_TOKEN` | CI secret for deployment, or use interactive CLI login. |
+| `TRIGGER_SECRET_KEY` | Local dev worker shell when needed; target environment server API key for task dispatch/run inspection/cancellation. Cloud supplies its own runtime key; never expose one to the browser. |
+| `WORKER_DATABASE_URL` | Trigger runtime secret: dedicated PostgreSQL LOGIN granted only `atelier_worker`; direct or session-pooled connection, remote `sslmode=verify-full`. |
+| `OBJECT_STORAGE_BUCKET`, `OBJECT_STORAGE_REGION` | Trigger runtime, matching app storage configuration. |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, optional `AWS_SESSION_TOKEN` | Trigger runtime secret storage credentials with Milestone 7 restricted permissions. |
+| `OBJECT_STORAGE_ENDPOINT`, `OBJECT_STORAGE_FORCE_PATH_STYLE` | Local MinIO dev; omit endpoint for AWS and set path style false. |
+
+See [Trigger environment variables](https://trigger.dev/docs/deploy-environment-variables).
+Do not configure worker database credentials or Trigger credentials as `NEXT_PUBLIC_*`
+or use the Supabase service-role API key as worker authorization. Vercel needs no
+Trigger key for enqueueing. The application retains its existing storage download
+credentials. Provision the dedicated database login through the trusted database
+administrator using a secret manager-generated password, with `NOINHERIT`, no
+superuser/database/role creation privileges, and membership in `atelier_worker`.
+The adapter assumes that role for each command. Do not grant table access. Apply
+repository migrations before enabling Cloud schedules.
+
+Cloud workers cannot reach localhost Supabase/MinIO. Use a reachable staging
+PostgreSQL/Supabase and private S3 bucket for Cloud acceptance. Local CLI development
+can connect to local services; it still requires a Trigger Cloud project. Verify the
+two schedules appear after deployment and are enabled in the intended environment.
+Never point staging and production schedules at the same job database.
+
+### Local acceptance and pending live acceptance
+
+`npm run test:workflows` uses real local PostgreSQL/MinIO and a temporary restricted
+LOGIN; only the Trigger dispatch transport is substituted. Run it after the full
+browser suite has provisioned local owner fixtures. Load the same local environment
+as storage tests plus the test-only Supabase administrative key for fixture login.
+Run the complete sequence from a clean disposable local database:
+
+```sh
+npm run db:reset
+npm run db:test
+npm test
+npm run test:e2e
+npm run test:workflows
+npm run test:storage
+npm run test:coverage
+npm run typecheck
+npm run lint
+npm run build
+npm run guardrails
+npm audit
+npm audit --omit=dev
+```
+
+The production dependency tree has a patched `ws` override for the SDK's transitive
+socket client. The deployment CLI is downloaded on demand and is not part of the
+production runtime dependency audit; audit/review that tooling separately when
+performing deployment.
+
+Live Cloud acceptance remains an explicit gate: deploy to the selected project,
+enqueue a real persisted job from the owner UI, close the browser/redeploy the web
+app, observe the bound run, and download verified persisted bytes. Exercise retries
+and operator cancellation and verify database terminal state. Local substitute tests
+do not establish live Cloud durability. Return only the project reference and
+confirmation that CLI authentication/runtime secrets are configured to continue.

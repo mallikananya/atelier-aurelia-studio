@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { createClient } from '@supabase/supabase-js';
+import { createS3BlobStore, objectStorageConfigFromEnvironment, uploadVerifiedArtifact } from '../../packages/storage/src/index';
 
 export const fixtureBytes = new TextEncoder().encode('Atelier Aurelia immutable storage acceptance fixture.\n');
 export const ownerEmail = 'milestone5-owner@example.test';
@@ -75,8 +76,6 @@ export async function startArtifactFixture() {
 }
 
 export async function completeArtifactFixture() {
-  const { createS3BlobStore, objectStorageConfigFromEnvironment, uploadVerifiedArtifact } =
-    await import('../../packages/storage/src/index');
   const fixture = await startArtifactFixture();
   const config = objectStorageConfigFromEnvironment(process.env);
   const store = createS3BlobStore(config);

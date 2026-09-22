@@ -20,7 +20,8 @@
     "test:coverage": "node --test --experimental-test-coverage --test-coverage-lines=80 --test-coverage-functions=80 --test-coverage-branches=80 tests/*.test.mjs && vitest run --coverage && npm run test:coverage --workspaces --if-present",
     "lint": "eslint tests eslint.config.mjs tools && npm run lint --workspaces --if-present",
     "guardrails": "node tools/architecture-guardrails.mjs",
-    "test:storage": "vitest run --config tests/storage/vitest.config.mts"
+    "test:storage": "vitest run --config tests/storage/vitest.config.mts",
+    "test:workflows": "vitest run --config tests/workflows/vitest.config.mts"
   },
   "engines": {
     "node": ">=22"
@@ -35,5 +36,8 @@
     "supabase": "^2.39.0",
     "typescript-eslint": "^8.0.0",
     "vitest": "^5.0.0"
+  },
+  "overrides": {
+    "ws": "^8.21.0"
   }
 }

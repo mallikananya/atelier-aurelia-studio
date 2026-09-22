@@ -1,6 +1,6 @@
 # Implementation status and handoff
 
-Snapshot: 2026-09-20. Milestones 1–7 are complete; do not treat the remaining Phase 1 acceptance flow as implemented. This document records repository evidence and resume boundaries. Product requirements and architecture remain authoritative in [PRD](PRD.md), [Architecture](ARCHITECTURE.md), [Implementation plan](IMPLEMENTATION_PLAN.md), and [ADR 0003](adr/0003-phase-1-platform.md).
+Snapshot: 2026-09-21. Milestones 1–7 are complete; Milestone 8 repository implementation and local acceptance are complete, with Cloud provisioning/live acceptance pending; do not treat the remaining Phase 1 acceptance flow as implemented. This document records repository evidence and resume boundaries. Product requirements and architecture remain authoritative in [PRD](PRD.md), [Architecture](ARCHITECTURE.md), [Implementation plan](IMPLEMENTATION_PLAN.md), and [ADR 0003](adr/0003-phase-1-platform.md).
 
 ## Intended product and approved architecture
 
@@ -31,6 +31,79 @@ The first three labels below summarize the corresponding commits; the repository
 | 5 — Invite-only authentication | Complete: `78872bf`, server sessions, protected routes, magic-link confirmation, logout, unit and browser tests. |
 | 6 — Persisted Products | Complete: `0f6dae3`, authenticated library, name-only creation through the existing transactional command, immutable current-revision detail, unit/browser/database acceptance tests. |
 | 7 — Private immutable storage | Complete: S3-compatible private MinIO adapter, canonical conditional writes, exact-version byte/hash verification before database completion, owner/RLS-authorized short-lived downloads, and real service/browser acceptance. |
+
+## Milestone 8 — durable execution repository delivery
+
+Started from verified clean `main` at `d36ba5e50057cd7067dd43311b063170f1ec487d`.
+The user confirmed no Trigger.dev Cloud project exists yet. Repository implementation
+and local validation are complete; **Cloud provisioning, deployment and live durability
+acceptance remain blocked on interactive account/project setup**. Do not mark the
+entire milestone deployed or begin the next milestone.
+
+- Separate `packages/workflows` server workspace pins Trigger.dev SDK 4.6.3 and
+  provides real build, scheduled dispatch and scheduled reconciliation tasks.
+- Authenticated Product detail enqueues via the existing database command, with one
+  stable job per revision through this proof-build UI. PostgreSQL derives ownership;
+  no browser provider credentials, run IDs or completion assertions are accepted.
+- Existing leased outbox, run bindings, attempts, immutable revision and completion
+  commands remain authoritative. Global provider idempotency reduces duplicates;
+  exact database run binding prevents an unbound/replayed provider run from executing.
+- New private execution fences support interrupted-attempt resumption and reject
+  stale attempts. A dedicated least-privilege PostgreSQL login uses parameterized
+  worker functions and a session advisory lock across execution. Direct/session
+  connections are required; transaction pooling is unsupported.
+- Bounded proof bytes derive from the persisted revision. Existing verified storage
+  upload and completion boundaries persist the exact object version and digest.
+  Each invocation gets a new artifact identity; uncertain writes may remain private
+  orphans but never overwrite prior objects. Completed replays perform no upload.
+- Three bounded provider attempts, cancellation signal checks, terminal hooks and a
+  five-minute reconciliation schedule cover retries, cancellation and missing hooks.
+  Provider success never substitutes for verified database completion. Structured
+  logs contain job/run/attempt identifiers, not secrets or artifact capabilities.
+
+Milestone 7 production storage/download files are unchanged. Its acceptance fixture
+now uses a static import to avoid a Playwright CommonJS/ESM cache conflict introduced
+by loading both storage and workflow acceptance in the same suite.
+
+Validation of the final repository implementation:
+
+| Check | Result |
+| --- | --- |
+| Clean local migration reset + pgTAP | **218/218**, including 23 durable-execution assertions |
+| Repository tests | **19/19** |
+| Unit tests | **195/195** |
+| Workspace tests | **17/17** |
+| Full real-service Playwright | **22/22** |
+| Real PostgreSQL/MinIO workflow integration | **7/7** |
+| Existing real MinIO integration | **6/6** |
+| Coverage | **98.21% lines, 97.68% branches, 93.44% functions, 97.51% statements**; all gates pass |
+| Typecheck, lint, production build, guardrails, diff whitespace | Pass |
+| Full + production dependency audits | **0 vulnerabilities** |
+| Secret checks | Source secret-pattern scan and configured storage-secret browser-bundle scan pass |
+| Separate correctness/security review | No blocking findings after cancellation fix; regression test verified RED then GREEN |
+
+Real workflow integration covers duplicate dispatch/execution, nonexistent jobs and
+wrong runs, actual storage failure and retry, interrupted worker retry, concurrent
+session exclusion, and injected database completion failures both before and after
+an actual commit. Existing SQL/UI tests retain invalid revisions, stale states and
+cross-account authorization coverage. The provider transport is a local substitute
+in these integration tests; PostgreSQL, worker permissions, MinIO and completion
+transactions are real.
+
+Remaining limitations: no live Trigger project/token, deployment or browser-close/
+web-redeploy Cloud evidence yet; no orphan cleanup; no user-facing cancellation or
+terminal-job retry UI; permanent invalid runs may consume bounded provider retries
+before terminal rejection. Provider status outages are logged and retried by later
+reconciliation, never treated as proof of success. CLI deployment tooling is fetched
+on demand and is outside the audited runtime tree. The patched `ws` override removes
+a vulnerable SDK transitive dependency from that tree.
+
+Follow [Milestone 8 setup](LOCAL_DEVELOPMENT.md#milestone-8--durable-phase-1-execution).
+The remaining user action is to create a Trigger Cloud organization/project, return
+its non-secret `proj_...` reference, authenticate the CLI, and configure environment
+secrets privately. Cloud workers require reachable staging PostgreSQL and private S3;
+they cannot connect to localhost services. Then deploy, verify schedules and run the
+live persisted-job acceptance before declaring all of Milestone 8 complete.
 
 Reliability follow-up: `6321259` adds 13 behavioral assertions for delivered-outbox requeue and replay safety. The alleged production defect was **not reproduced**: `2893e83` already includes the requeue guard. No production SQL or migration was changed in this follow-up.
 
@@ -135,10 +208,9 @@ conditional-write rejection. The adapter uses fresh connections with one attempt
 preserving no-retry semantics. This trades TCP/TLS connection reuse for predictable
 Phase 1 behavior; it does not weaken overwrite or integrity guarantees.
 
-Milestone 7 completes only private artifact storage and authorized downloads. The
-**next recommended slice is Milestone 8: real Trigger.dev Cloud v4 durable workflow/
-dispatcher and Phase 1 test-build execution**, followed by browser-close/redeploy
-acceptance. Do not treat those capabilities as implemented. Do not begin Phase 2 or
+Milestone 7 completes only private artifact storage and authorized downloads. Milestone 8 repository implementation now provides the durable workflow/dispatcher
+and Phase 1 test build described above. Its Cloud provisioning and browser-close/
+redeploy acceptance remain pending. Do not begin Phase 2 or
 the later Product Workspace. Production provider setup/live durability remain
 unverified. CI runs static/unit/coverage/build checks but does not provision local
 Supabase/MinIO or run pgTAP/browser acceptance.

@@ -9,11 +9,14 @@ export default defineConfig({
       include: [
         "packages/contracts/src/phase1.ts",
         "packages/core/src/jobs.ts",
+        "packages/workflows/src/**/*.ts",
         "packages/storage/src/artifact-keys.ts",
         "packages/storage/src/s3-blob-store.ts",
         "apps/studio/src/lib/products/downloads.ts",
         "apps/studio/src/lib/products/download-response.ts",
         "apps/studio/src/lib/products/service.ts",
+        "apps/studio/src/lib/products/builds.ts",
+        "apps/studio/src/app/(protected)/products/build-actions.ts",
         "apps/studio/src/app/(protected)/products/actions.ts",
       ],
       thresholds: {

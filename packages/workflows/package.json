@@ -1,0 +1,21 @@
+{
+  "name": "@atelier-aurelia/workflows",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src trigger.config.ts",
+    "trigger:dev": "npx trigger.dev@4.6.3 dev",
+    "trigger:deploy": "npx trigger.dev@4.6.3 deploy"
+  },
+  "dependencies": {
+    "@trigger.dev/sdk": "4.6.3",
+    "pg": "^8.16.3",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.15.6",
+    "typescript": "^5.9.0"
+  }
+}
