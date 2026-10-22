@@ -7,7 +7,7 @@ if (!project || !/^proj_[a-zA-Z0-9]+$/.test(project)) {
 
 export default defineConfig({
   project,
-  runtime: 'node',
+  runtime: 'node-24',
   dirs: ['./src/trigger'],
   maxDuration: 300,
   retries: { enabledInDev: true, default: { maxAttempts: 3, minTimeoutInMs: 130_000,

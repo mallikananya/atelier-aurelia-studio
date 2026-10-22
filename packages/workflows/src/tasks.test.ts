@@ -2,7 +2,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 type RunArgs = { payload: { jobId: string }; ctx: { run: { id: string }; attempt: { number: number } } };
 type Definition = { id: string; maxDuration: number; retry?: { maxAttempts: number; minTimeoutInMs?: number }; cron?: string;
   schema?: { safeParse: (value: unknown) => { success: boolean } };
-  run: (...args: unknown[]) => Promise<void>; onFailure?: (input: RunArgs) => Promise<void>; onCancel?: (input: RunArgs) => Promise<void> };
+  run: (...args: unknown[]) => Promise<unknown>; onFailure?: (input: RunArgs) => Promise<void>; onCancel?: (input: RunArgs) => Promise<void> };
 const mock = vi.hoisted(() => ({ definitions: [] as Definition[], activeRuns: vi.fn(), reconcile: vi.fn(), close: vi.fn(),
   execute: vi.fn(), dispatch: vi.fn(), retrieve: vi.fn(), cancel: vi.fn(), log: vi.fn(), store: {}, repository: {} }));
 vi.mock('@trigger.dev/sdk', () => ({
@@ -26,8 +26,25 @@ it('limits execution and accepts only job identity', () => {
   expect(build().schema?.safeParse(input.payload).success).toBe(true);
   expect(build().schema?.safeParse({ jobId: 'invalid' }).success).toBe(false);
   expect(build().schema?.safeParse({ ...input.payload, ownerId: 'override' }).success).toBe(false);
-  expect(dispatch()).toMatchObject({ cron: '* * * * *', maxDuration: 120 });
-  expect(reconcile()).toMatchObject({ cron: '*/5 * * * *', maxDuration: 300 });
+  expect(dispatch()).toMatchObject({ maxDuration: 120 });
+  expect(reconcile()).toMatchObject({ maxDuration: 300 });
+});
+it('does not install automatic schedules during deployment or development', () => {
+  expect(dispatch()).not.toHaveProperty('cron');
+  expect(reconcile()).not.toHaveProperty('cron');
+});
+it('provides a bounded credential-free smoke task without database or storage work', async () => {
+  await import('./trigger/smoke.ts');
+  const smoke = mock.definitions.find((item) => item.id === 'atelier-phase1-cloud-smoke')!;
+  expect(smoke).toMatchObject({ maxDuration: 30, retry: { maxAttempts: 1 } });
+  expect(smoke).not.toHaveProperty('cron');
+  expect(smoke.schema?.safeParse({}).success).toBe(true);
+  expect(smoke.schema?.safeParse({ jobId: input.payload.jobId }).success).toBe(false);
+  expect(await smoke.run()).toEqual({ status: 'ok', scope: 'cloud-runtime-only' });
+  expect(mock.execute).not.toHaveBeenCalled();
+  expect(mock.dispatch).not.toHaveBeenCalled();
+  expect(mock.activeRuns).not.toHaveBeenCalled();
+  expect(mock.close).not.toHaveBeenCalled();
 });
 it('runs with SDK correlation and always closes database resources', async () => {
   mock.execute.mockImplementation(async (_repo, _store, _bucket, identity, log) => log('started', identity));

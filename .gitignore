@@ -11,6 +11,7 @@ test-results/
 *.log
 *.tsbuildinfo
 .vercel/
+.trigger/
 
 # Local Supabase runtime state
 supabase/.branches/

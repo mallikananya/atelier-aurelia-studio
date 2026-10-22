@@ -7,7 +7,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src trigger.config.ts",
     "trigger:dev": "npx trigger.dev@4.6.3 dev",
-    "trigger:deploy": "npx trigger.dev@4.6.3 deploy",
+    "trigger:deploy": "node -e \"console.error('Choose an explicit deployment target: trigger:deploy:preproduction or trigger:deploy:staging'); process.exit(1)\"",
+    "trigger:prepare:preproduction": "TRIGGER_PROJECT_REF=proj_fielriwlwflsqochecli npx trigger.dev@4.6.3 deploy --env prod --dry-run --skip-update-check",
+    "trigger:deploy:preproduction": "TRIGGER_PROJECT_REF=proj_fielriwlwflsqochecli npx trigger.dev@4.6.3 deploy --env prod --skip-update-check",
     "trigger:prepare:staging": "npx trigger.dev@4.6.3 deploy --env staging --dry-run --skip-update-check",
     "trigger:deploy:staging": "npx trigger.dev@4.6.3 deploy --env staging --skip-update-check"
   },

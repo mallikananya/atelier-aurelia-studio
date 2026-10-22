@@ -3,10 +3,9 @@ import { dispatchOne } from '../dispatcher.ts';
 import { createWorkerRepository } from '../postgres.ts';
 import { triggerDispatcher } from '../provider.ts';
 
-// Deployment installs this Cloud schedule; no browser or request-path dispatch credentials.
+// Schedules require explicit dashboard opt-in after AWS acceptance; deployment alone is inert.
 export const generationDispatcher = schedules.task({
   id: 'atelier-generation-dispatcher',
-  cron: '* * * * *',
   queue: { concurrencyLimit: 1 },
   maxDuration: 120,
   retry: { maxAttempts: 3 },
@@ -24,7 +23,6 @@ export const generationDispatcher = schedules.task({
 const failedStates = new Set(['FAILED', 'CRASHED', 'SYSTEM_FAILURE', 'EXPIRED', 'TIMED_OUT', 'COMPLETED']);
 export const generationReconciler = schedules.task({
   id: 'atelier-generation-reconciler',
-  cron: '*/5 * * * *',
   queue: { concurrencyLimit: 1 },
   maxDuration: 300,
   run: async () => {

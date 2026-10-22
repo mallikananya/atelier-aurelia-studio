@@ -257,8 +257,8 @@ terminal; use a new job identity for new work, never rearm a delivered outbox.
 
 ### Cloud setup and the interactive dependency
 
-Create an organization/project at [Trigger.dev Cloud](https://cloud.trigger.dev),
-then copy the non-secret `proj_...` project reference from project settings.
+Reuse the existing [Trigger.dev Cloud](https://cloud.trigger.dev) project
+`proj_fielriwlwflsqochecli`; do not create a duplicate project.
 The repository configuration already exists; do not run an initializer that replaces
 it. Use [Trigger's setup guide](https://trigger.dev/docs/quick-start) for account
 onboarding. Set `TRIGGER_PROJECT_REF` in your private shell/CI environment before
@@ -267,7 +267,8 @@ Next.js continues to deploy separately to Vercel.
 
 ```sh
 npm run trigger:dev --workspace=@atelier-aurelia/workflows
-npm run trigger:deploy --workspace=@atelier-aurelia/workflows
+npm run trigger:prepare:preproduction --workspace=@atelier-aurelia/workflows
+npm run trigger:deploy:preproduction --workspace=@atelier-aurelia/workflows
 ```
 
 These scripts use the matching pinned CLI via `npx`. CLI authentication uses an
@@ -301,7 +302,10 @@ repository migrations before enabling Cloud schedules.
 Cloud workers cannot reach localhost Supabase/MinIO. Use a reachable staging
 PostgreSQL/Supabase and private S3 bucket for Cloud acceptance. Local CLI development
 can connect to local services; it still requires a Trigger Cloud project. Verify the
-two schedules appear after deployment and are enabled in the intended environment.
+two schedules are configured manually only after the database and AWS acceptance
+prerequisites pass. Deployment does not install or enable schedules automatically.
+For the authorized Free Production preproduction smoke, follow
+[the isolation checks](CLOUD_DEPLOYMENT.md) and leave all schedules disabled.
 Never point staging and production schedules at the same job database.
 
 ### Local acceptance and pending live acceptance

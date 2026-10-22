@@ -6,71 +6,85 @@ building locally does not establish remote acceptance. Record actual provider ID
 deployment IDs and commit hashes in the completion checklist only after verification;
 never record keys, passwords, connection URLs or signed download URLs.
 
-## Current AWS hold
+## AWS-independent Trigger preproduction
 
-Remote Supabase migrations, Auth settings and restricted worker login preparation
-can proceed independently. Trigger Cloud project/environment setup and Vercel
-Preview preparation can also proceed. **Do not deploy the Trigger tasks, start a
-remote-connected dev worker, enable schedules, or select Run Test Build until the
-private AWS bucket and restricted runtime access pass AWS acceptance.**
+On 2026-10-21 the user authorized the existing Free Plan **PROD** environment for
+isolated preproduction only, with no actual production data, credentials or
+schedules. The project is `atelier-aurelia-studio`, reference
+`proj_fielriwlwflsqochecli`, organization `atelier-aurelia-8c3b`. The provider's
+paid **Staging** environment is not required for this authorized path. Do not
+upgrade the plan, add unrelated infrastructure, or treat this as a production launch.
 
-Both existing schedules are declarative and synchronize on deployment/dev startup:
-`atelier-generation-dispatcher` runs every minute and
-`atelier-generation-reconciler` every five minutes. Deploying then disabling them
-leaves a race. Hold deployment itself while AWS is unavailable. Do not replace S3
-with Supabase Storage or weaken immutable-write checks to bypass this gate.
-[Trigger schedule synchronization](https://trigger.dev/docs/tasks/scheduled).
+The dispatcher and reconciler now have **no declarative cron**. Deployment/dev
+startup does not install schedules. Explicit dashboard attachment is the only
+schedule opt-in. Existing imperative schedules survive code changes: before any
+deployment inspect this project's PROD Schedules view and disable any test schedules
+already present; verify none are active. Do not touch unrelated projects or real
+production schedules. [Trigger schedule behavior](https://trigger.dev/docs/tasks/scheduled).
 
-## Trigger.dev Cloud staging
+The AWS hold remains on actual build execution: do not select **Run Test Build**,
+manually run the dispatcher/build/reconciler, or attach their schedules until private
+AWS storage and restricted runtime access pass AWS acceptance. Do not replace S3 or
+weaken immutable-write verification. Deployment and the bounded smoke below are
+AWS-independent; neither closes durable workflow acceptance.
 
-Computer Use inspection on 2026-10-14 verified project `atelier-aurelia-studio`,
-reference `proj_fielriwlwflsqochecli`, in organization `atelier-aurelia-8c3b`.
-The Free Plan exposes Development and Production, while Staging displays an
-**Upgrade** link. **Staging is blocked on a paid plan decision; no upgrade has
-been authorized or performed.** No development tasks were connected at inspection.
-Keep the staging commands below prepared; do not deploy to Production as a
-substitute and do not interpret a missing staging environment as a reason to create
-unrelated infrastructure. The AWS execution hold also remains in force.
+### Deployment and bounded smoke
 
-1. In Computer Use, select the intended organization/project at
-   [Trigger.dev Cloud](https://cloud.trigger.dev). Record the non-secret `proj_...`
-   reference. Select **Staging**, distinct from Development and Production. Preserve
-   `packages/workflows/trigger.config.ts`; do not run an initializer.
-2. Let the account owner complete sign-in, MFA, credential entry or secret transfer
-   directly. CLI login uses a deployment access token/session; task runtime API keys
-   are a different credential. Do not put either key in source or shell arguments.
-3. Configure the staging-only `WORKER_DATABASE_URL` through the secret field. Use
-   the dedicated restricted LOGIN, `sslmode=verify-full`, and a direct or **session**
-   pooler connection. Transaction pooling cannot retain the job advisory lock.
-   Never use `postgres`, service-role credentials, or production's job database.
-4. Leave AWS-dependent variables pending until the AWS acceptance gate clears.
-   The Cloud runtime supplies its own `TRIGGER_SECRET_KEY`; do not override it with
-   another environment's key. The app needs no Trigger key for enqueueing.
-5. Set the non-secret `TRIGGER_PROJECT_REF` in the deployment shell. Use the pinned
-   CLI/SDK version 4.6.3. From the repository root, the preparation command is:
+1. In Computer Use, verify the exact organization, project and **PROD** environment
+   above. It is isolated preproduction by explicit user authorization. Leave AWS,
+   database and production credentials absent for the credential-free smoke.
+2. Authenticate the pinned CLI using its interactive browser login. The account
+   owner completes authorization/MFA themselves. Alternatively, the owner can
+   install a private `TRIGGER_ACCESS_TOKEN` in their deployment environment; never
+   pass it as a CLI argument, paste it in chat or copy it into runtime settings.
+   The CLI access credential differs from Cloud's runtime `TRIGGER_SECRET_KEY`.
+3. From the repository root use these explicit, project-pinned scripts:
 
    ```sh
-   npm run trigger:prepare:staging --workspace=@atelier-aurelia/workflows
+   npm run trigger:prepare:preproduction --workspace=@atelier-aurelia/workflows
+   npm run trigger:deploy:preproduction --workspace=@atelier-aurelia/workflows
    ```
 
-   This uses `--env staging --dry-run`, creates a deployable bundle without deploying
-   it, and can still require CLI authentication/network access. Inspect the bundle
-   locally; do not publish its contents or debug logs. A missing authorized account
-   is a pending build check, not a successful dry run. Do not use the generic
-   `trigger:deploy` script: the provider default is Production.
-   [CLI environment and dry-run options](https://trigger.dev/docs/cli-deploy-commands).
+   The first targets `prod` with `--dry-run`, producing a bundle without deployment;
+   the second deploys to the same authorized project/environment. Both pin CLI 4.6.3
+   to match the SDK and skip update checks. The generic `trigger:deploy` script
+   fails with instructions to choose a target. Dry-run can require network/CLI
+   authentication. Inspect output locally without publishing bundles or debug logs.
+   [CLI deploy options](https://trigger.dev/docs/cli-deploy-commands).
+4. Confirm the deployed version contains the three existing task IDs and
+   `atelier-phase1-cloud-smoke`. In the dashboard run **only** the smoke task once
+   with payload `{}`. It accepts no extra fields, has concurrency one, one attempt
+   and a 30-second maximum. It imports no database/storage adapter, reads no secrets,
+   and returns `{ "status": "ok", "scope": "cloud-runtime-only" }`.
+5. Record the deployment ID, reviewed commit and completed smoke run ID. Verify
+   there are no active schedules or unintended queued/running jobs. Stop any test
+   schedules after the validation window. Do not repeat or automate smoke runs.
 
-After AWS acceptance, populate Trigger staging's bucket, region and runtime secrets
-from the table below, confirm the dedicated database connection, then run:
+This proves only that Trigger Cloud can deploy and execute the code. It does not
+prove database connectivity, persistence, job binding, retries, artifact integrity
+or browser-independent durability.
 
-```sh
-npm run trigger:deploy:staging --workspace=@atelier-aurelia/workflows
-```
+### Later AWS-backed acceptance
 
-Confirm the dashboard target is **Staging**, both schedules are attached to this
-deployment, and all three task IDs are present (including
-`atelier-phase1-test-build`). Record the deployment ID and reviewed commit. Live
-durability/retry/cancellation acceptance remains separate from a successful deploy.
+After AWS passes, populate only preproduction runtime values in the table below.
+Use the restricted staging database LOGIN with `sslmode=verify-full` through a
+direct or session-pooled connection; transaction pooling breaks advisory locks.
+Never use `postgres`, service-role credentials or a real production database.
+Cloud supplies its own runtime API key; Vercel needs no Trigger key for enqueueing.
+
+For the bounded acceptance window, explicitly attach these imperative schedules in
+the selected preproduction environment's dashboard, avoiding duplicate schedules:
+
+| Task | Cron (UTC) |
+| --- | --- |
+| `atelier-generation-dispatcher` | `* * * * *` |
+| `atelier-generation-reconciler` | `*/5 * * * *` |
+
+Run the existing full durability/retry/cancellation acceptance, then disable both
+schedules and verify no jobs remain executing. Do not leave preproduction polling
+unattended. Deployment does not recreate these imperative schedules or enable them.
+The existing explicit `trigger:prepare:staging` and `trigger:deploy:staging` scripts
+remain available only if a paid Staging environment is separately authorized later.
 
 ## Vercel Preview preparation
 
@@ -126,7 +140,7 @@ when CLI prebuilt limitations affect Next.js behavior.
 
 ## Environment separation
 
-| Variable | Vercel Preview | Trigger Staging |
+| Variable | Vercel Preview | Trigger isolated preproduction (provider PROD) |
 | --- | --- | --- |
 | `NEXT_PUBLIC_APP_URL` | Exact stable staging origin | Not needed |
 | `NEXT_PUBLIC_SUPABASE_URL` | Remote staging Supabase URL | Not needed |
@@ -153,8 +167,9 @@ deployment secrets with `NEXT_PUBLIC_`.
   deployment ID and tested commit recorded.
 - AWS: policy/configuration and real storage acceptance explicitly pending while
   the support ticket blocks provisioning.
-- Trigger: dry-run bundle result recorded separately; staging deployment/schedules
-  remain pending until AWS passes.
+- Trigger: dry-run, isolated preproduction deployment and one-off credential-free
+  smoke are separate AWS-independent checks. All build execution/schedules remain
+  pending until AWS passes; disable test schedules after acceptance.
 - Full Step 1: a real bound Cloud job survives browser closure/Studio redeploy;
   retries/cancellation reconcile to persisted terminal state; exact-version bytes,
   SHA-256, authorized download and tenant isolation verified. These remain pending
