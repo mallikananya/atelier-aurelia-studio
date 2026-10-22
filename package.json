@@ -14,14 +14,16 @@
     "db:test": "supabase test db",
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "node --test tests/*.test.mjs && npm run test:unit && npm run test --workspaces --if-present",
+    "test": "node --test tests/*.test.mjs tests/aws/*.test.mjs && npm run test:unit && npm run test --workspaces --if-present",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
-    "test:coverage": "node --test --experimental-test-coverage --test-coverage-lines=80 --test-coverage-functions=80 --test-coverage-branches=80 tests/*.test.mjs && vitest run --coverage && npm run test:coverage --workspaces --if-present",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-lines=80 --test-coverage-functions=80 --test-coverage-branches=80 tests/*.test.mjs tests/aws/*.test.mjs && vitest run --coverage && npm run test:coverage --workspaces --if-present",
     "lint": "eslint tests eslint.config.mjs tools && npm run lint --workspaces --if-present",
     "guardrails": "node tools/architecture-guardrails.mjs",
     "test:storage": "vitest run --config tests/storage/vitest.config.mts",
-    "test:workflows": "vitest run --config tests/workflows/vitest.config.mts"
+    "test:workflows": "vitest run --config tests/workflows/vitest.config.mts",
+    "test:aws:offline": "node --test tests/aws/*.test.mjs",
+    "test:aws": "vitest run --config tests/aws/vitest.config.mts"
   },
   "engines": {
     "node": ">=22"
