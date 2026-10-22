@@ -6,10 +6,17 @@ export function workerDatabaseConfig(env: NodeJS.ProcessEnv): PoolConfig {
   const connectionString = env.WORKER_DATABASE_URL;
   if (!connectionString) throw new Error('WORKER_DATABASE_URL is required');
   let url: URL;
-  try { url = new URL(connectionString); } catch { throw new Error('A PostgreSQL worker URL is required'); }
+  let username: string;
+  try {
+    url = new URL(connectionString);
+    username = decodeURIComponent(url.username);
+  } catch { throw new Error('A PostgreSQL worker URL is required'); }
   if (!['postgres:', 'postgresql:'].includes(url.protocol)) throw new Error('A PostgreSQL worker URL is required');
-  if (['postgres', 'supabase_admin', 'service_role'].includes(decodeURIComponent(url.username))) {
+  if (['postgres', 'supabase_admin', 'service_role'].includes(username.split('.')[0])) {
     throw new Error('A dedicated least-privilege worker login is required');
+  }
+  if (url.hostname.endsWith('.supabase.com') && url.port === '6543') {
+    throw new Error('Worker advisory locks require a direct or session pooler connection');
   }
   const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
   if (!local && url.searchParams.get('sslmode') !== 'verify-full') {

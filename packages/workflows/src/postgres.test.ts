@@ -98,3 +98,21 @@ it('pages bound runs by server cursor and sends only terminal reconciliation val
 it('rejects malformed URLs without exposing the supplied value', () => {
   expect(() => workerDatabaseConfig({ WORKER_DATABASE_URL: 'secret invalid' })).toThrow('A PostgreSQL worker URL is required');
 });
+
+it('rejects pooled privileged usernames and transaction pooling', () => {
+  for (const role of ['postgres', 'supabase_admin', 'service_role']) {
+    expect(() => workerDatabaseConfig({ WORKER_DATABASE_URL:
+      `postgresql://${role}.project:secret@aws-0-region.pooler.supabase.com:5432/postgres?sslmode=verify-full` }))
+      .toThrow('least-privilege');
+  }
+  expect(() => workerDatabaseConfig({ WORKER_DATABASE_URL:
+    'postgresql://atelier_worker_login.project:secret@aws-0-region.pooler.supabase.com:6543/postgres?sslmode=verify-full' }))
+    .toThrow('session');
+  expect(workerDatabaseConfig({ WORKER_DATABASE_URL:
+    'postgresql://atelier_worker_login.project:secret@aws-0-region.pooler.supabase.com:5432/postgres?sslmode=verify-full' }))
+    .toMatchObject({ max: 3 });
+});
+it('rejects malformed encoded usernames without exposing credentials', () => {
+  expect(() => workerDatabaseConfig({ WORKER_DATABASE_URL: 'postgresql://%ZZ:secret@localhost/db' }))
+    .toThrow('A PostgreSQL worker URL is required');
+});
