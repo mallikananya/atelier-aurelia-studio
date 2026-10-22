@@ -7,7 +7,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src trigger.config.ts",
     "trigger:dev": "npx trigger.dev@4.6.3 dev",
-    "trigger:deploy": "npx trigger.dev@4.6.3 deploy"
+    "trigger:deploy": "npx trigger.dev@4.6.3 deploy",
+    "trigger:prepare:staging": "npx trigger.dev@4.6.3 deploy --env staging --dry-run --skip-update-check",
+    "trigger:deploy:staging": "npx trigger.dev@4.6.3 deploy --env staging --skip-update-check"
   },
   "dependencies": {
     "@trigger.dev/sdk": "4.6.3",
