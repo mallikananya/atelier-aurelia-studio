@@ -2,6 +2,54 @@
 
 Snapshot: 2026-09-21. Milestones 1–7 are complete; Milestone 8 repository implementation and local acceptance are complete, with Cloud provisioning/live acceptance pending; do not treat the remaining Phase 1 acceptance flow as implemented. This document records repository evidence and resume boundaries. Product requirements and architecture remain authoritative in [PRD](PRD.md), [Architecture](ARCHITECTURE.md), [Implementation plan](IMPLEMENTATION_PLAN.md), and [ADR 0003](adr/0003-phase-1-platform.md).
 
+## Step 1 cloud-readiness follow-up — 2026-10-21
+
+Repository preparation is complete and locally validated. **Remote staging and full
+Step 1 acceptance remain incomplete; Step 2 has not begun.** Existing migrations,
+MinIO acceptance and durable-execution guarantees are preserved.
+
+| Deliverable | Current evidence / next gate |
+| --- | --- |
+| Supabase staging target | Existing `atelier-aurelia-studio-staging`, reference `wasnnohlwphngcvpicbf`, observed paused on October 21. Resume requires user approval after automatic approval review blocked compute activation. No remote migration or Auth change made. |
+| Supabase preparation | [Staging runbook](SUPABASE_STAGING.md), password-free NOLOGIN provisioning and read-only privilege verifier ready. Local baseline plus ten unsafe-privilege rejection/rollback cases passed. Worker URL validation rejects pooled administrative usernames and known transaction-pooler endpoints. |
+| Remote migrations/Auth/worker | **Pending:** resume, inspect history, apply four forward migrations, exact HTTPS callback/templates, invite intended owner first, verify RLS, activate restricted credential manually, verify remote TLS/session access. |
+| Trigger Cloud | Existing project `proj_fielriwlwflsqochecli` verified. Explicit staging dry-run/deploy commands prepared. Free Plan displays Staging Upgrade; paid-plan decision, CLI authorization and dry-run remain pending. No deployment or schedule activation. |
+| Vercel | [Build configuration and runbook](CLOUD_DEPLOYMENT.md) prepared. Signed-in team inspected; Git import still requested GitHub installation at last inspection. User approved scoped authorization, but completed installation was not yet observable. No project deployment or environment secrets configured. |
+| AWS artifacts | [Policy artifacts and dedicated acceptance suite](../infra/aws/README.md) ready, including separate worker, download signer and audit identities. Five offline tests pass; explicit target/credential guard prevents accidental execution. |
+| AWS live acceptance | **Pending — support ticket blocks provisioning.** No AWS requests or resources created. Bucket controls, effective IAM and all real AWS storage/signer checks remain unverified. |
+| Cloud durability | **Pending:** actual staged job survives browser close/web redeploy, retries/cancellation, persisted exact-version bytes and authorized downloads. Hold Trigger deployment while AWS prerequisites are unmet. |
+
+Final local regression after compatible dependency updates:
+
+- Clean local reset and pgTAP: **218/218**.
+- Repository/offline checks: **24/24**; unit tests: **197/197**; workspace tests: **17/17**.
+- Full real-service browser suite: **22/22**; durable workflow integration: **7/7**;
+  real MinIO integration: **6/6**.
+- Coverage gates (80% minimum), typecheck, lint, architecture guardrails and production build pass.
+- Local setup initially lacked credentials; the successful run loaded existing local
+  service credentials privately in process memory. No tests were weakened or skipped.
+- Security audit remediation updated compatible locked dependencies, including Next.js
+  16.4.2. Production audit: **zero vulnerabilities**. Full audit retains **five high
+  development-tool findings** in the unpatched braces → micromatch → fast-glob → Next
+  ESLint dependency chain. The suggested incompatible downgrade was not applied.
+  This is an open development-tool risk, not a clean full audit.
+
+Validated milestone commits: `582a28e` (compatible security updates), `3d6016f`
+(Supabase staging preparation), `3bf45c5` (Trigger/Vercel preparation), and
+`d816753` (AWS policy artifacts and acceptance). Commits remain local; no push
+or deployment was performed.
+
+Completion checklist:
+
+- [x] AWS-independent repository artifacts and restricted connection checks.
+- [x] Dedicated AWS suite with existing storage guarantees and separate signer checks.
+- [x] Local regression and compatible production dependency remediation.
+- [ ] Remote Supabase migrations, Auth acceptance and restricted worker access.
+- [ ] Trigger Staging availability, secrets and authenticated deployment preparation.
+- [ ] Vercel staging project/environment configuration and live Auth/Products checks.
+- [ ] AWS-dependent acceptance and final Cloud durability flow.
+- [ ] Resolve remaining development-only audit findings when a compatible fix exists.
+
 ## Intended product and approved architecture
 
 Atelier Aurelia is a private AI-native studio: idea → finished digital product → review and targeted conversational edits → exact release approval → verified Etsy draft. Publication is manual in Etsy. AI owns creative direction and artwork; deterministic services own validation, rendering, packaging, QA, provenance, approval, and marketplace submission.
