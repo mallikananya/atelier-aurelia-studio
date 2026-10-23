@@ -281,7 +281,7 @@ settings before deployment, separately for development/staging/production:
 
 | Variable | Where / purpose |
 | --- | --- |
-| `TRIGGER_PROJECT_REF` | Local deployment shell or CI; non-secret project selector. |
+| `TRIGGER_PROJECT_REF` | Local deployment shell/CI and target Cloud environment; non-secret project selector required when the remote indexer imports the config. |
 | `TRIGGER_ACCESS_TOKEN` | CI secret for deployment, or use interactive CLI login. |
 | `TRIGGER_SECRET_KEY` | Local dev worker shell when needed; target environment server API key for task dispatch/run inspection/cancellation. Cloud supplies its own runtime key; never expose one to the browser. |
 | `WORKER_DATABASE_URL` | Trigger runtime secret: dedicated PostgreSQL LOGIN granted only `atelier_worker`; direct or session-pooled connection, remote `sslmode=verify-full`. |

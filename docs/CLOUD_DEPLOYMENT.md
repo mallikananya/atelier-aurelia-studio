@@ -33,6 +33,9 @@ AWS-independent; neither closes durable workflow acceptance.
 1. In Computer Use, verify the exact organization, project and **PROD** environment
    above. It is isolated preproduction by explicit user authorization. Leave AWS,
    database and production credentials absent for the credential-free smoke.
+   Set the non-secret `TRIGGER_PROJECT_REF=proj_fielriwlwflsqochecli` in the
+   target Cloud environment as well as the deployment shell: remote indexing
+   imports the config and requires this value. Runtime is explicitly `node-24`.
 2. Authenticate the pinned CLI using its interactive browser login. The account
    owner completes authorization/MFA themselves. Alternatively, the owner can
    install a private `TRIGGER_ACCESS_TOKEN` in their deployment environment; never

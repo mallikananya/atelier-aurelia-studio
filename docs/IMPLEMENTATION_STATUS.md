@@ -2,7 +2,7 @@
 
 Snapshot: 2026-09-21. Milestones 1–7 are complete; Milestone 8 repository implementation and local acceptance are complete, with Cloud provisioning/live acceptance pending; do not treat the remaining Phase 1 acceptance flow as implemented. This document records repository evidence and resume boundaries. Product requirements and architecture remain authoritative in [PRD](PRD.md), [Architecture](ARCHITECTURE.md), [Implementation plan](IMPLEMENTATION_PLAN.md), and [ADR 0003](adr/0003-phase-1-platform.md).
 
-## Step 1 cloud-readiness follow-up — 2026-10-21
+## Step 1 cloud-readiness follow-up — 2026-10-22
 
 Repository preparation is complete and locally validated. **Remote staging and full
 Step 1 acceptance remain incomplete; Step 2 has not begun.** Existing migrations,
@@ -10,21 +10,25 @@ MinIO acceptance and durable-execution guarantees are preserved.
 
 | Deliverable | Current evidence / next gate |
 | --- | --- |
-| Supabase staging target | Existing `atelier-aurelia-studio-staging`, reference `wasnnohlwphngcvpicbf`, observed paused on October 21. Resume requires user approval after automatic approval review blocked compute activation. No remote migration or Auth change made. |
+| Supabase staging target | Existing `atelier-aurelia-studio-staging`, reference `wasnnohlwphngcvpicbf`, resumed on the existing Free plan after explicit user authorization; spend cap retained. Public signup disabled; anonymous sign-in off, email confirmation on, Email provider enabled. |
 | Supabase preparation | [Staging runbook](SUPABASE_STAGING.md), password-free NOLOGIN provisioning and read-only privilege verifier ready. Local baseline plus ten unsafe-privilege rejection/rollback cases passed. Worker URL validation rejects pooled administrative usernames and known transaction-pooler endpoints. |
-| Remote migrations/Auth/worker | **Pending:** resume, inspect history, apply four forward migrations, exact HTTPS callback/templates, invite intended owner first, verify RLS, activate restricted credential manually, verify remote TLS/session access. |
-| Trigger Cloud | Existing project `proj_fielriwlwflsqochecli` verified. Explicit staging dry-run/deploy commands prepared. Free Plan displays Staging Upgrade; paid-plan decision, CLI authorization and dry-run remain pending. No deployment or schedule activation. |
-| Vercel | [Build configuration and runbook](CLOUD_DEPLOYMENT.md) prepared. Signed-in team inspected; Git import still requested GitHub installation at last inspection. User approved scoped authorization, but completed installation was not yet observable. No project deployment or environment secrets configured. |
+| Remote migrations/Auth/worker | **Pending:** CLI login by owner, apply four forward migrations (dashboard currently shows no tracked migrations), exact HTTPS callback/templates, invite intended owner first, verify RLS, activate restricted credential manually, verify remote TLS/session access. Dashboard now requires custom SMTP or Pro for template edits; no upgrade authorized. Existing free SMTP credentials must be configured privately. |
+| Trigger Cloud | Existing project `proj_fielriwlwflsqochecli` verified. User authorized existing Free Production exclusively for isolated preproduction. CLI authentication and explicit preproduction dry-run pass; runtime pinned to Node 24 after deprecated Node 21 warning. Before deployment, dashboard showed no tasks/runs or Production-scoped custom credentials; October usage was $0/$5. Only the non-secret project reference was subsequently added. Credential-free bounded smoke and manual schedule opt-in prepared. Deployment `20261022.2` (`ebrog7rn`, code commit `0951a06`) succeeded. Smoke `run_06gmbmpdgbv8vmnechsib8nka2` completed once with `{status: ok, scope: cloud-runtime-only}`; zero schedules attached and all task running counts zero. Initial deployment failed safely on missing remote non-secret project reference; configured that value and retried successfully. Development smoke `run_06gmbn72hnrjfr9le32fees4a2` also completed with the expected output; local worker stopped afterward. |
+| Vercel | [Build configuration and runbook](CLOUD_DEPLOYMENT.md) prepared. GitHub authorization verified October 22: import lists `mallikananya/atelier-aurelia-studio`, root `apps/studio`, Next.js. Import page accessible without the earlier account-security gate. Team remains Hobby; commercial deployment is blocked by plan terms. No Vercel project/deployment created or secrets configured. |
 | AWS artifacts | [Policy artifacts and dedicated acceptance suite](../infra/aws/README.md) ready, including separate worker, download signer and audit identities. Five offline tests pass; explicit target/credential guard prevents accidental execution. |
 | AWS live acceptance | **Pending — support ticket blocks provisioning.** No AWS requests or resources created. Bucket controls, effective IAM and all real AWS storage/signer checks remain unverified. |
-| Cloud durability | **Pending:** actual staged job survives browser close/web redeploy, retries/cancellation, persisted exact-version bytes and authorized downloads. Hold Trigger deployment while AWS prerequisites are unmet. |
+| Cloud durability | **Pending:** actual staged job survives browser close/web redeploy, retries/cancellation, persisted exact-version bytes and authorized downloads. Hold actual build execution and dispatcher/reconciler schedules while AWS prerequisites are unmet; isolated credential-free runtime smoke is separate acceptance. |
 
-Final local regression after compatible dependency updates:
+Local validation evidence (distinguish prior clean regression from current reruns):
 
-- Clean local reset and pgTAP: **218/218**.
-- Repository/offline checks: **24/24**; unit tests: **197/197**; workspace tests: **17/17**.
-- Full real-service browser suite: **22/22**; durable workflow integration: **7/7**;
-  real MinIO integration: **6/6**.
+- Prior clean local reset and pgTAP: **218/218**. No remote reset performed.
+- Repository/offline checks: **24/24**; unit tests: **199/199** (October 22 rerun); workspace tests: **17/17**.
+- Prior clean real-service browser suite: **22/22**. Latest repeat stopped on the
+  existing multiple-owner fixture safety guard (7 passed, 2 failed, 13 not run);
+  local reset awaits explicit user approval after automatic review rejection.
+- Current durable workflow integration: **7/7**; real MinIO integration: **6/6**.
+  Vitest and coverage patched to **5.0.3**; all 199 unit tests and coverage gates pass.
+  Production build rerun passes; browser tests have not been weakened.
 - Coverage gates (80% minimum), typecheck, lint, architecture guardrails and production build pass.
 - Local setup initially lacked credentials; the successful run loaded existing local
   service credentials privately in process memory. No tests were weakened or skipped.
@@ -36,16 +40,21 @@ Final local regression after compatible dependency updates:
 
 Validated milestone commits: `582a28e` (compatible security updates), `3d6016f`
 (Supabase staging preparation), `3bf45c5` (Trigger/Vercel preparation), and
-`d816753` (AWS policy artifacts and acceptance). Commits remain local; no push
-or deployment was performed.
+`d816753` (AWS policy artifacts and acceptance), `68007e4` (Vitest security patch),
+and `0951a06` (isolated Trigger acceptance). Trigger deployment is verified above;
+all validated milestones are prepared for push to the existing `origin/main`.
 
 Completion checklist:
 
 - [x] AWS-independent repository artifacts and restricted connection checks.
 - [x] Dedicated AWS suite with existing storage guarantees and separate signer checks.
-- [x] Local regression and compatible production dependency remediation.
-- [ ] Remote Supabase migrations, Auth acceptance and restricted worker access.
-- [ ] Trigger Staging availability, secrets and authenticated deployment preparation.
+- [x] Prior clean local regression and compatible dependency remediation.
+- [ ] Latest clean browser regression rerun, pending approved local fixture reset.
+- [x] Resume existing Supabase Free project and disable public/anonymous signup.
+- [ ] Remote Supabase migrations, SMTP/templates, Auth acceptance and restricted worker access.
+- [x] Trigger Free preproduction authorization, authenticated dry-run and bounded smoke preparation.
+- [x] Trigger hosted credential-free smoke; no active schedules or workers left running.
+- [ ] Restricted runtime secrets and full AWS-backed durability acceptance.
 - [ ] Vercel staging project/environment configuration and live Auth/Products checks.
 - [ ] AWS-dependent acceptance and final Cloud durability flow.
 - [ ] Resolve remaining development-only audit findings when a compatible fix exists.
