@@ -23,14 +23,43 @@ this inspection.
 
 Do not run `db push` against this state: the baseline migrations use deliberate
 non-idempotent `create table` statements and would fail on existing objects. Do not
-mark versions applied merely because representative objects exist. First authenticate
-the CLI, capture a schema-only staging dump, and compare tables, columns, constraints,
-indexes, functions, triggers, policies, grants, and role attributes against a clean
-local application of the four committed migrations. If any drift exists, review a
-forward-only reconciliation migration separately. If the schemas are equivalent,
-request explicit approval before initializing or repairing the remote migration
-ledger with exactly the four committed versions; then re-run `migration list` and a
-`db push --dry-run` that must report no pending changes.
+mark versions applied merely because representative objects exist.
+
+On 2026-10-24, a clean isolated PostgreSQL instance received the four committed
+migrations in order and was compared with staging through canonical, read-only
+catalog queries. All category counts and hashes match: 131 columns, 113 constraints,
+42 indexes, 20 public/private functions, 11 policies, 14 table ACL/RLS records, nine
+triggers, and the `atelier_worker` role. Ownership, private-schema ACLs and pgcrypto's
+`extensions` placement also match. Both sides have no missing or unexpected
+application tables; staging has zero application rows and zero Auth users. The only
+difference is the absent `supabase_migrations.schema_migrations` history table.
+
+History reconciliation is therefore safe from a schema and data perspective, but it
+still requires explicit approval because it changes remote migration metadata. The
+proposed operation is:
+
+```sh
+supabase link --project-ref wasnnohlwphngcvpicbf
+supabase migration repair --linked --status applied \
+  202609140001 202609140002 202609140003 202609210001
+supabase migration list --linked
+supabase db push --linked --dry-run
+```
+
+The owner enters any database password interactively. The acceptance condition is
+exactly four applied versions in order and no pending dry-run changes. Do not proceed
+to a real `db push`. If post-repair verification fails, restore an empty logical
+ledger without touching application objects or data:
+
+```sh
+supabase migration repair --linked --status reverted \
+  202609210001 202609140003 202609140002 202609140001
+supabase migration list --linked
+```
+
+The rollback may leave Supabase's empty history infrastructure in place; it removes
+only the four version records. Dropping the history table or schema is unnecessary
+and prohibited.
 
 ## Forward migrations
 
