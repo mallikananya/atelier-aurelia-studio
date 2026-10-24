@@ -6,9 +6,31 @@ exists). Verify its non-secret project reference before linking anything. The
 repository's `project_id = "atelier-aurelia-studio"` and localhost Auth URLs describe
 local development; they do not establish a hosted project or remote configuration.
 
-Observed target (2026-10-21): `atelier-aurelia-studio-staging`, reference
-`wasnnohlwphngcvpicbf`, is paused. Resume approval is pending; no remote
-migrations, Auth settings or worker grants were changed in this follow-up.
+Observed target (2026-10-24): `atelier-aurelia-studio-staging`, reference
+`wasnnohlwphngcvpicbf`, is active on the Free plan. Its Site URL and exact Netlify
+`/auth/confirm` redirect are configured. This is the staging project; do not target
+another project or database.
+
+### Existing remote history mismatch
+
+The dashboard migration ledger reports no migrations and the
+`supabase_migrations.schema_migrations` table does not exist, but the remote staging
+database already contains all 13 Step 1 public tables with forced RLS and zero
+estimated rows. Read-only catalog verification also found the private execution
+fence, expected public and durable worker functions, Auth-user trigger, and the
+restricted `atelier_worker` NOLOGIN role. No remote mutation was performed during
+this inspection.
+
+Do not run `db push` against this state: the baseline migrations use deliberate
+non-idempotent `create table` statements and would fail on existing objects. Do not
+mark versions applied merely because representative objects exist. First authenticate
+the CLI, capture a schema-only staging dump, and compare tables, columns, constraints,
+indexes, functions, triggers, policies, grants, and role attributes against a clean
+local application of the four committed migrations. If any drift exists, review a
+forward-only reconciliation migration separately. If the schemas are equivalent,
+request explicit approval before initializing or repairing the remote migration
+ledger with exactly the four committed versions; then re-run `migration list` and a
+`db push --dry-run` that must report no pending changes.
 
 ## Forward migrations
 
@@ -109,7 +131,8 @@ rechecked afterward. This is local script validation, not remote acceptance.
 
 ## Completion evidence
 
-- [ ] Dedicated remote project reference recorded and all four migrations applied.
+- [x] Dedicated remote staging reference and pre-existing Step 1 schema verified.
+- [ ] Remote migration history reconciled with the four committed versions after an exact schema comparison and explicit approval.
 - [ ] Hosted invite-only settings, exact callback and both email templates verified.
 - [ ] Intended owner invited first; sign-in/out and tenant isolation verified remotely.
 - [ ] Restricted role provisioned and catalog assertions pass remotely.
