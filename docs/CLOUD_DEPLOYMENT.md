@@ -118,6 +118,15 @@ architecture and is not used by Netlify staging.
 [Netlify monorepos](https://docs.netlify.com/build/configure-builds/monorepos/),
 [Next.js on Netlify](https://docs.netlify.com/build/frameworks/framework-setup-guides/nextjs/overview/).
 
+Live staging was established on October 24, 2026 as the private Netlify project
+`atelier-aurelia-studio-staging`. Deployment `6adcd8352b5c0a1ce7b49e0c` published
+reviewed commit `504f03f` at
+`https://atelier-aurelia-studio-staging.netlify.app`. Git auto-publishing is enabled
+for `main`; Netlify team access protects the site. The project contains only the
+three browser-safe variables below. Supabase Site URL uses that exact origin and its
+redirect allowlist contains only the exact `/auth/confirm` callback. Anonymous access
+to `/products` redirects to `/login?next=%2Fproducts` as required.
+
 Configure the three browser-safe variables below for the intended Preview branch.
 `NEXT_PUBLIC_APP_URL` must be the exact stable HTTPS staging origin, without a path.
 Coordinate that origin with Supabase Site URL and its exact `/auth/confirm` redirect
