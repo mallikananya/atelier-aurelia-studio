@@ -121,9 +121,11 @@ architecture and is not used by Netlify staging.
 Live staging was established on October 24, 2026 as the private Netlify project
 `atelier-aurelia-studio-staging`. Deployment `6adcd8352b5c0a1ce7b49e0c` published
 reviewed commit `504f03f` at
-`https://atelier-aurelia-studio-staging.netlify.app`. Git auto-publishing is enabled
-for `main`; Netlify team access protects the site. The project contains only the
-three browser-safe variables below. Supabase Site URL uses that exact origin and its
+`https://atelier-aurelia-studio-staging.netlify.app`. The Git link remains scoped to
+this repository, but automatic builds were stopped after acceptance to conserve Free
+plan credits; re-enable them only for an intentional staging release. Netlify team
+access protects the site. The project contains only the three browser-safe variables
+below. Supabase Site URL uses that exact origin and its
 redirect allowlist contains only the exact `/auth/confirm` callback. Anonymous access
 to `/products` redirects to `/login?next=%2Fproducts` as required.
 
