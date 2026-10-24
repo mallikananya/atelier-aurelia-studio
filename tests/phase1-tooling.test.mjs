@@ -84,6 +84,17 @@ test("Netlify staging builds the Studio workspace from the repository root", asy
   assert.doesNotMatch(config, /SUPABASE|AWS_|TRIGGER_|DATABASE_URL|WORKER_DATABASE_URL/);
 });
 
+test("root development dependencies remain portable across cloud build platforms", async () => {
+  const packageJson = JSON.parse(await text("package.json"));
+  const packageLock = JSON.parse(await text("package-lock.json"));
+
+  assert.equal(packageJson.devDependencies["@rolldown/binding-darwin-arm64"], undefined);
+  assert.equal(
+    packageLock.packages[""].devDependencies["@rolldown/binding-darwin-arm64"],
+    undefined,
+  );
+});
+
 test("local runtime storage credentials cannot administer or delete artifact bytes", async () => {
   const compose = await text("infra/compose.yml");
   assert.match(compose, /AWS_ACCESS_KEY_ID/);
