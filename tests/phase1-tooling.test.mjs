@@ -75,6 +75,15 @@ test("environment example separates public and server-only values", async () => 
   assert.doesNotMatch(environment, /^NEXT_PUBLIC_(?:DATABASE_URL|SUPABASE_SERVICE_ROLE_KEY|AWS_|TRIGGER_SECRET_KEY)/m);
 });
 
+test("Netlify staging builds the Studio workspace from the repository root", async () => {
+  const config = await text("netlify.toml");
+
+  assert.match(config, /command\s*=\s*"npm run build --workspace=@atelier-aurelia\/studio"/);
+  assert.match(config, /publish\s*=\s*"apps\/studio\/\.next"/);
+  assert.match(config, /NODE_VERSION\s*=\s*"22"/);
+  assert.doesNotMatch(config, /SUPABASE|AWS_|TRIGGER_|DATABASE_URL|WORKER_DATABASE_URL/);
+});
+
 test("local runtime storage credentials cannot administer or delete artifact bytes", async () => {
   const compose = await text("infra/compose.yml");
   assert.match(compose, /AWS_ACCESS_KEY_ID/);

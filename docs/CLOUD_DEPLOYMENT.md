@@ -73,7 +73,8 @@ After AWS passes, populate only preproduction runtime values in the table below.
 Use the restricted staging database LOGIN with `sslmode=verify-full` through a
 direct or session-pooled connection; transaction pooling breaks advisory locks.
 Never use `postgres`, service-role credentials or a real production database.
-Cloud supplies its own runtime API key; Vercel needs no Trigger key for enqueueing.
+Cloud supplies its own runtime API key; the staging web host needs no Trigger key
+for enqueueing.
 
 For the bounded acceptance window, explicitly attach these imperative schedules in
 the selected preproduction environment's dashboard, avoiding duplicate schedules:
@@ -89,28 +90,33 @@ unattended. Deployment does not recreate these imperative schedules or enable th
 The existing explicit `trigger:prepare:staging` and `trigger:deploy:staging` scripts
 remain available only if a paid Staging environment is separately authorized later.
 
-## Vercel Preview preparation
+## Netlify Free staging preparation
 
-Use the intended Vercel team/project and Preview environment as staging. Project
-creation/import can initiate a build, so first review the target and environment
-settings in Computer Use. Do not enable a production release or add a deployment
-automation as part of this work.
+On October 24, 2026, the user approved Netlify Free as the commercial-use staging
+host because Vercel Hobby is restricted to personal or non-commercial use. This is
+a staging-host substitution only: the Next.js application, Supabase, Trigger.dev,
+and AWS boundaries remain unchanged. The production-host decision remains Vercel
+unless a later architecture decision changes it.
 
-| Project setting | Repository value |
+Connect only `mallikananya/atelier-aurelia-studio`. Netlify calls the main site URL
+a production deploy; for Step 1 it is the isolated staging application and must not
+contain production data, schedules, or credentials. Free has a hard monthly credit
+limit and no automatic recharge. Do not enable paid add-ons or auto recharge.
+
+| Netlify setting | Repository value |
 | --- | --- |
 | Framework | Next.js |
-| Root Directory | `apps/studio` |
-| Include source files outside Root Directory | Enabled; Studio imports `packages/storage` |
+| Base directory | Repository root (unset/default) |
+| Package directory | `apps/studio` |
 | Node.js version | 22.x |
-| Install Command | `cd ../.. && npm ci` |
-| Build Command | `npm run build` (runs in `apps/studio`) |
-| Output Directory | `.next` |
+| Build command | `npm run build --workspace=@atelier-aurelia/studio` |
+| Publish directory | `apps/studio/.next` |
 
-`apps/studio/vercel.json` records the build settings. Root Directory and inclusion
-of source outside it are dashboard settings, not fields in this file. Keep the
-root lockfile and all workspace sources available to the build.
-[Vercel build settings](https://vercel.com/docs/builds/configure-a-build),
-[monorepo file access](https://vercel.com/docs/monorepos/monorepo-faq).
+`netlify.toml` records the non-secret build settings. Keep the root lockfile and all
+workspace sources available. The Vercel file remains for the approved production
+architecture and is not used by Netlify staging.
+[Netlify monorepos](https://docs.netlify.com/build/configure-builds/monorepos/),
+[Next.js on Netlify](https://docs.netlify.com/build/frameworks/framework-setup-guides/nextjs/overview/).
 
 Configure the three browser-safe variables below for the intended Preview branch.
 `NEXT_PUBLIC_APP_URL` must be the exact stable HTTPS staging origin, without a path.
@@ -124,26 +130,13 @@ before AWS is ready. Do not enqueue builds or claim downloads work. If Preview
 protection is enabled, the intended owner needs access before following email links.
 Do not disable protection merely to make automation pass.
 
-For a CLI-driven Preview, first use interactive `vercel link` from the repository
-root to select the reviewed existing team/project. Verify its dashboard Root
-Directory is `apps/studio`, then use an installed, reviewed Vercel CLI:
-
-```sh
-vercel pull --environment=preview
-vercel build
-vercel deploy --prebuilt --target=preview
-```
-
-These commands fetch private configuration and the last command deploys remotely;
-execute only at the deployment milestone with the target/commit checked. Keep
-`.vercel/` ignored and never upload it as an artifact. Do not use `--prod`,
-`promote`, or production environment values. Prefer the dashboard/Git Preview path
-when CLI prebuilt limitations affect Next.js behavior.
-[Vercel deployment options](https://vercel.com/docs/cli/deploy).
+Use Netlify's Git integration so the reviewed `main` commit and build settings are
+visible in one place. Configure environment values in the dashboard, scoped only to
+this site. Do not copy `.env`, enable auto recharge, or install optional integrations.
 
 ## Environment separation
 
-| Variable | Vercel Preview | Trigger isolated preproduction (provider PROD) |
+| Variable | Netlify staging | Trigger isolated preproduction (provider PROD) |
 | --- | --- | --- |
 | `NEXT_PUBLIC_APP_URL` | Exact stable staging origin | Not needed |
 | `NEXT_PUBLIC_SUPABASE_URL` | Remote staging Supabase URL | Not needed |
@@ -166,7 +159,7 @@ deployment secrets with `NEXT_PUBLIC_`.
 
 - Remote Supabase: forward migrations, invite-only owner login, RLS isolation and
   dedicated worker restrictions verified against the actual remote project.
-- Vercel: exact Preview origin, callback, authentication and Products smoke checks;
+- Netlify: exact staging origin, callback, authentication and Products smoke checks;
   deployment ID and tested commit recorded.
 - AWS: policy/configuration and real storage acceptance explicitly pending while
   the support ticket blocks provisioning.

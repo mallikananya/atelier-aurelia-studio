@@ -1,0 +1,7 @@
+[build]
+command = "npm run build --workspace=@atelier-aurelia/studio"
+publish = "apps/studio/.next"
+
+[build.environment]
+NODE_VERSION = "22"
+
