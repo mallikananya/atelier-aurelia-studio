@@ -11,7 +11,7 @@ Observed target (2026-10-24): `atelier-aurelia-studio-staging`, reference
 `/auth/confirm` redirect are configured. This is the staging project; do not target
 another project or database.
 
-### Existing remote history mismatch
+### Remote history reconciliation
 
 The dashboard migration ledger reports no migrations and the
 `supabase_migrations.schema_migrations` table does not exist, but the remote staging
@@ -34,22 +34,25 @@ triggers, and the `atelier_worker` role. Ownership, private-schema ACLs and pgcr
 application tables; staging has zero application rows and zero Auth users. The only
 difference is the absent `supabase_migrations.schema_migrations` history table.
 
-History reconciliation is therefore safe from a schema and data perspective, but it
-still requires explicit approval because it changes remote migration metadata. The
-proposed operation is:
+After explicit approval, the four versions were recorded as applied on staging on
+2026-10-24 without replaying migration SQL. `supabase migration list --linked`
+reported all four versions locally and remotely, and
+`supabase db push --linked --dry-run --skip-vault` reported no pending migrations.
+No application schema or data was changed by the reconciliation. The executed
+operation was:
 
 ```sh
 supabase link --project-ref wasnnohlwphngcvpicbf
 supabase migration repair --linked --status applied \
   202609140001 202609140002 202609140003 202609210001
 supabase migration list --linked
-supabase db push --linked --dry-run
+supabase db push --linked --dry-run --skip-vault
 ```
 
-The owner enters any database password interactively. The acceptance condition is
-exactly four applied versions in order and no pending dry-run changes. Do not proceed
-to a real `db push`. If post-repair verification fails, restore an empty logical
-ledger without touching application objects or data:
+The acceptance condition passed: exactly four applied versions in order and no
+pending dry-run changes. Do not proceed to a real `db push` without a future reviewed
+forward migration. The metadata-only rollback remains documented for incident
+recovery and must not be run without separate approval:
 
 ```sh
 supabase migration repair --linked --status reverted \
@@ -109,6 +112,17 @@ an authenticated nonmember sees no owner records. Do not alter membership rules 
 make a smoke test pass. Products and immutable Revision 1 can be checked without AWS;
 Run Test Build and artifact download acceptance remain pending.
 
+Hosted inspection on 2026-10-24 confirmed that Auth Users remains empty, public and
+anonymous signup are disabled, email confirmation is enabled, the Email provider is
+enabled, and the live Netlify login renders correctly. Custom SMTP is disabled. This
+Free project is subject to Supabase's June 3, 2026 policy change, so its hosted
+templates cannot be edited while using the default mailer. The default mailer also
+restricts delivery to addresses on the Supabase organization team. Its default invite
+and magic-link templates do not provide the app's required direct `token_hash` handoff
+to `/auth/confirm`; do not invite the owner until a free custom SMTP provider is
+configured and both committed templates are installed. SMTP credentials must be
+entered privately in the dashboard and never copied into source, chat, or Netlify.
+
 ## Dedicated worker role
 
 After migrations, execute `supabase/admin/prepare_worker.sql` in the reviewed
@@ -161,7 +175,7 @@ rechecked afterward. This is local script validation, not remote acceptance.
 ## Completion evidence
 
 - [x] Dedicated remote staging reference and pre-existing Step 1 schema verified.
-- [ ] Remote migration history reconciled with the four committed versions after an exact schema comparison and explicit approval.
+- [x] Remote migration history reconciled with the four committed versions; linked list matches and dry run reports no pending migrations.
 - [ ] Hosted invite-only settings, exact callback and both email templates verified.
 - [ ] Intended owner invited first; sign-in/out and tenant isolation verified remotely.
 - [ ] Restricted role provisioned and catalog assertions pass remotely.
