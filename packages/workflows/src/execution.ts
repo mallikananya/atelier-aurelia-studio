@@ -3,10 +3,12 @@ import { z } from 'zod';
 import { uploadVerifiedArtifact, type BlobStore } from '../../storage/src/index.ts';
 import type { ExecutionInput, WorkflowRepository, WorkflowLog } from './ports.ts';
 
+import { generatePlanner, validatePlanner } from './planner.ts';
+
 const Execution = z.strictObject({ jobId: z.uuid(), runId: z.string().trim().min(1).max(300),
   attemptNumber: z.number().int().min(1).max(100) });
 
-/** A bounded proof build: bytes describe the immutable database revision, never client payload. */
+/** Execute the persisted job edition; ownership and revision identity never come from client payload. */
 export async function executeBuild(repository: WorkflowRepository, store: BlobStore, bucket: string,
   value: ExecutionInput, log: WorkflowLog = () => {}, signal?: AbortSignal): Promise<void> {
   const input = Execution.parse(value);
@@ -20,17 +22,21 @@ export async function executeBuild(repository: WorkflowRepository, store: BlobSt
     log('workflow.started', input);
     try {
       signal?.throwIfAborted();
-      const bytes = new TextEncoder().encode(JSON.stringify({ schemaVersion: 'phase1.1',
+      const isPlanner = context.jobType === 'planner_pdf_v1';
+      const bytes = isPlanner ? await generatePlanner() : new TextEncoder().encode(JSON.stringify({ schemaVersion: 'phase1.1',
         kind: 'phase1-test-build', jobId: context.jobId, productId: context.productId,
         revisionId: context.revisionId, name: context.revisionName,
         revisionContentSha256: context.contentSha256 }) + '\n');
+      if (isPlanner) await validatePlanner(bytes);
+      const mediaType = isPlanner ? 'application/pdf' : 'text/plain';
+      signal?.throwIfAborted();
       // Every execution incarnation gets a fresh identity. Uncertain writes remain private
       // orphans; retries never overwrite an earlier object's exact version.
       const artifactId = randomUUID();
-      await uploadVerifiedArtifact(store, { ...context, artifactId }, bytes, 'text/plain',
+      await uploadVerifiedArtifact(store, { ...context, artifactId }, bytes, mediaType,
         (result) => {
           signal?.throwIfAborted();
-          return locked.complete({ jobId: input.jobId, attemptId, artifactId, bucket, result });
+          return locked.complete({ jobId: input.jobId, attemptId, artifactId, bucket, mediaType, result });
         });
       log('workflow.succeeded', input);
     } catch {

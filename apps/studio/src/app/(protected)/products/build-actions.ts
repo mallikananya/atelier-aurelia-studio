@@ -16,7 +16,7 @@ export async function enqueueBuildAction(_previous: { message: string }, form: F
   if (result.kind === "denied") redirect("/access-denied");
   if (result.kind === "queued") {
     revalidatePath(`/products/${result.productId}`);
-    return { message: "Test build requested. Refresh to see its progress." };
+    return { message: form.get("buildType") === "planner_pdf_v1" ? "Planner requested. Refresh to see its progress." : "Test build requested. Refresh to see its progress." };
   }
   if (result.kind === "uncertain") return { message: "We could not confirm the request. Refresh or retry; the same revision reuses its existing build." };
   return { message: "Build unavailable. Refresh the product and try again." };

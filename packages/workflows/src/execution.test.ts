@@ -100,3 +100,14 @@ it('cancellation before persistence never marks a final attempt failed or comple
   expect(f.repository.complete).not.toHaveBeenCalled();
   expect(f.repository.fail).not.toHaveBeenCalled();
 });
+
+it('generates and validates a planner before persisting PDF provenance', async () => {
+  const f = fixture();
+  vi.mocked(f.repository.executionContext).mockResolvedValue({ ...f.context, jobType: 'planner_pdf_v1' });
+  await executeBuild(f.repository, f.store, 'artifacts', input);
+  const request = f.store.putImmutable.mock.calls[0][0];
+  expect(Buffer.from(request.bytes).subarray(0, 5).toString()).toBe('%PDF-');
+  expect(request.key).toMatch(/\/planner.pdf$/);
+  expect(request.mediaType).toBe('application/pdf');
+  expect(f.repository.complete).toHaveBeenCalledWith(expect.objectContaining({ mediaType: 'application/pdf' }));
+});

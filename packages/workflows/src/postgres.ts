@@ -92,7 +92,7 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
   async complete(input: Parameters<WorkflowRepository['complete']>[0]): Promise<void> {
     await this.query('select private.worker_complete_test_build($1::uuid,$2::uuid,$3::uuid,$4::text,$5::text,$6::text,$7::text,$8::bigint,$9::text)',
       [input.jobId, input.attemptId, input.artifactId, input.bucket, input.result.key,
-        input.result.versionId, input.result.sha256, input.result.sizeBytes, 'text/plain']);
+        input.result.versionId, input.result.sha256, input.result.sizeBytes, input.mediaType ?? 'text/plain']);
   }
   async fail(input: Parameters<WorkflowRepository['fail']>[0]): Promise<void> {
     await this.query('select private.worker_fail_attempt($1::uuid,$2::uuid,$3::text,$4::text,$5::boolean)',

@@ -25,7 +25,7 @@ const verificationError = () => new Error("Artifact storage verification failed.
 const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 function validateKey(key: string): void {
     const parts = key.split("/");
-    const canonical = artifactStorageKey({ accountId: parts[1], productId: parts[3], revisionId: parts[5], artifactId: parts[7] });
+    const canonical = artifactStorageKey({ accountId: parts[1], productId: parts[3], revisionId: parts[5], artifactId: parts[7], mediaType: parts[8] === "planner.pdf" ? "application/pdf" : "text/plain" });
     if (key !== canonical)
         throw new Error("Invalid artifact storage identity.");
 }
@@ -127,7 +127,7 @@ export function createS3BlobStore(inputConfig: S3BlobStoreConfig, injected?: Tra
 /** Database completion belongs to the caller's existing authorized command boundary. */
 export async function uploadVerifiedArtifact<T>(store: BlobStore, identity: ArtifactKeyInput, bytes: Uint8Array, mediaType: string, persist: (result: ImmutablePutResult) => Promise<T>): Promise<T> {
     const snapshot = new Uint8Array(bytes);
-    const result = await store.putImmutable({ key: artifactStorageKey(identity), bytes: snapshot, mediaType, sha256: hash(snapshot) });
+    const result = await store.putImmutable({ key: artifactStorageKey({ ...identity, mediaType }), bytes: snapshot, mediaType, sha256: hash(snapshot) });
     return persist(result);
 }
 export function objectStorageConfigFromEnvironment(env: Record<string, string | undefined>): S3BlobStoreConfig {

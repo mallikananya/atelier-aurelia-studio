@@ -310,3 +310,34 @@ Operational details and commands are in [Local development](LOCAL_DEVELOPMENT.md
 2. Read this status, linked docs, applicable instructions, tests and contracts. Resolve scope from repository evidence, distinguishing milestones from phases.
 3. Work within the requested milestone. Persist coherent changes incrementally; validate and commit separate completed steps when authorized.
 4. Do not silently redesign approved boundaries: no fixed aesthetic/template catalog, legacy import, mutable revision history, browser-owned durable jobs, separate preview/final lineage, arbitrary Etsy payloads or automated Etsy publication. Approval must bind exact bytes and listing metadata.
+
+## First local planner product — October 27, 2026
+
+The separately authorized product milestone advances beyond the earlier Phase 2A
+spec-only proposal: one fixed undated weekly planner can now be generated locally.
+No template catalog, AI listing work, marketplace publishing or cloud deployment
+was added. See [local generation and preview instructions](LOCAL_DEVELOPMENT.md#first-planner-undated-weekly-edition).
+
+Architecture inspection found existing `ProductSpec`/`PageSpec`/`VisualDNA` domain
+schemas and Phase 1 immutable revision/artifact contracts, but no PDF renderer or
+rendering templates. This slice adds a deterministic pdf-lib renderer with a stable
+146-page manifest; it does not claim to implement general ProductSpec rendering.
+Existing database ownership, job/outbox/attempt contracts, local execution locks,
+BlobStore verification and short-lived authorized downloads are reused. One
+forward-only migration adds the planner job/artifact variants and preserves proof
+builds. The PDF's exact immutable storage version and checksum remain authoritative.
+
+Visual review: all 146 pages rendered; cover, guide, monthly, habit, reflection,
+both weekly layouts and notes inspected at readable resolution. No clipping or
+overlap was observed. This is screen-render verification; no physical print proof
+or marketplace readiness approval is claimed.
+
+Verification for this milestone: `npm test` passed (219 Vitest tests plus 47
+Node tests), 9 workflow integration tests, 6 storage tests, 218 database tests,
+and both workflow browser tests passed. Coverage: 97.31% lines, 96.25% statements,
+93.89% branches, 93.26% functions. Typecheck, lint, architecture guardrails,
+preview generation and environment-loaded production build passed. Independent
+pypdf parsing confirmed all 146 A4 pages. The existing Zod dependency was updated
+from 4.6.4 to 4.6.7 to resolve an audit finding; clean install reports zero
+vulnerabilities. The review's cross-job-type idempotency collision was fixed and
+verified in both directions against local PostgreSQL.

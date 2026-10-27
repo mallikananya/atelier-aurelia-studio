@@ -16,3 +16,7 @@ test-results/
 # Local Supabase runtime state
 supabase/.branches/
 supabase/.temp/
+
+# Generated local planner and visual review files
+output/
+tmp/pdfs/

@@ -27,7 +27,8 @@
     "test:storage": "node tools/run-with-env.mjs node_modules/vitest/vitest.mjs run --config tests/storage/vitest.config.mts",
     "test:workflows": "node tools/run-with-env.mjs node_modules/vitest/vitest.mjs run --config tests/workflows/vitest.config.mts",
     "test:aws:offline": "node --test tests/aws/*.test.mjs",
-    "test:aws": "vitest run --config tests/aws/vitest.config.mts"
+    "test:aws": "vitest run --config tests/aws/vitest.config.mts",
+    "planner:preview": "npm run build --workspace=@atelier-aurelia/workflows && node tools/generate-planner.mjs"
   },
   "engines": {
     "node": ">=22"

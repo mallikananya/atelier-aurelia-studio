@@ -32,6 +32,8 @@ export default async function ProductPage({ params }: { params: Promise<{ produc
         <dt>Content SHA-256</dt><dd>{revision.content_sha256}</dd>
         <dt>Saved at</dt><dd>{revision.created_at}</dd>
       </dl>
+      <h3>Undated weekly planner</h3>
+      <BuildForm productId={product.id} revisionId={revision.id} planner />
       <h3>Test build</h3>
       <BuildForm productId={product.id} revisionId={revision.id} />
       {builds.kind === "ok" && <ul>{builds.jobs.map(job => <li key={job.id}>
@@ -43,7 +45,7 @@ export default async function ProductPage({ params }: { params: Promise<{ produc
       {artifacts.kind === "ok" && artifacts.artifacts.length > 0 && <>
         <h3>Artifacts</h3>
         <ul>{artifacts.artifacts.map(artifact => <li key={artifact.id}>
-          <a href={`/artifacts/${artifact.id}/download`} rel="noreferrer">Download artifact ({artifact.size_bytes} bytes)</a>
+          <a href={`/artifacts/${artifact.id}/download`} rel="noreferrer">{artifact.role === "planner-pdf" ? "Download planner PDF" : "Download artifact"} ({artifact.size_bytes} bytes)</a>
         </li>)}</ul>
       </>}
       {artifacts.kind === "unavailable" && <p role="alert">Artifacts could not be loaded. Refresh to try again.</p>}

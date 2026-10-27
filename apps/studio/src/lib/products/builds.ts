@@ -3,6 +3,9 @@ import { z } from "zod";
 import { productDetail } from "./service";
 
 export async function enqueueTestBuild(value: unknown, form: FormData) {
+  const buildType = z.enum(['phase1_test_build', 'planner_pdf_v1']).safeParse(form.get('buildType') ?? 'phase1_test_build');
+  if (!buildType.success || form.getAll('buildType').length > 1) return { kind: 'invalid' } as const;
+  const planner = buildType.data === 'planner_pdf_v1';
   const productId = z.uuid().safeParse(form.get("productId"));
   const revisionId = z.uuid().safeParse(form.get("revisionId"));
   if (!productId.success || !revisionId.success || form.getAll("productId").length !== 1 || form.getAll("revisionId").length !== 1) return { kind: "invalid" } as const;
@@ -10,12 +13,12 @@ export async function enqueueTestBuild(value: unknown, form: FormData) {
   if (detail.kind !== "ok") return detail;
   if (detail.revision.id !== revisionId.data) return { kind: "invalid" } as const;
   try {
-    // One Phase 1 proof build per immutable revision. Replays reuse the same job,
+    // One build per edition and immutable revision. Replays reuse the same job,
     // including after uncertain transport responses; ownership is derived in SQL.
-    const { data, error } = await (value as SupabaseClient).rpc("enqueue_phase1_test_build", {
+    const { data, error } = await (value as SupabaseClient).rpc(planner ? "enqueue_planner_build" : "enqueue_phase1_test_build", {
       p_product_id: detail.product.id,
       p_revision_id: detail.revision.id,
-      p_idempotency_key: `phase1:${detail.revision.id}`,
+      p_idempotency_key: `${planner ? "planner-v1" : "phase1"}:${detail.revision.id}`,
     });
     const jobId = z.uuid().safeParse(data?.[0]?.job_id);
     if (error || !jobId.success) return { kind: "uncertain" } as const;

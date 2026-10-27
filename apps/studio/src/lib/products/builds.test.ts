@@ -60,3 +60,18 @@ describe("build status", () => {
     expect(query.eq).toHaveBeenCalledWith("revision_id", revisionId);
   });
 });
+
+it('queues the fixed planner edition with a distinct idempotency namespace', async () => {
+  vi.mocked(productDetail).mockResolvedValue(detail as never);
+  const client = { rpc: vi.fn().mockResolvedValue({ data: [{ job_id: jobId }], error: null }) };
+  const form = input(); form.set('buildType', 'planner_pdf_v1');
+  expect(await enqueueTestBuild(client, form)).toEqual({ kind: 'queued', productId, jobId });
+  expect(client.rpc).toHaveBeenCalledWith('enqueue_planner_build', {
+    p_product_id: productId, p_revision_id: revisionId, p_idempotency_key: `planner-v1:${revisionId}`,
+  });
+});
+it.each(['unknown', 'planner_pdf_v2'])('rejects unsupported build type %s', async type => {
+  const client = { rpc: vi.fn() }; const form = input(); form.set('buildType', type);
+  expect(await enqueueTestBuild(client, form)).toEqual({ kind: 'invalid' });
+  expect(client.rpc).not.toHaveBeenCalled();
+});

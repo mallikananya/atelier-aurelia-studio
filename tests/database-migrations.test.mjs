@@ -13,6 +13,7 @@ async function migrationSource() {
     "202609140002_phase1_api.sql",
     "202609140003_phase1_security.sql",
     "202609210001_durable_execution.sql",
+    "202610270001_planner_pdf.sql",
   ]);
   return Promise.all(migrations.map((file) => readFile(path.join(migrationsDirectory, file), "utf8")))
     .then((sources) => sources.join("\n"));

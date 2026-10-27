@@ -380,3 +380,73 @@ app, observe the bound run, and download verified persisted bytes. Exercise retr
 and operator cancellation and verify database terminal state. Local substitute tests
 do not establish live Cloud durability. Return only the project reference and
 confirmation that CLI authentication/runtime secrets are configured to continue.
+
+## First planner: undated weekly edition
+
+This milestone produces one fixed Atelier Aurelia planner locally. It uses the
+existing authenticated Products flow, local runner, PostgreSQL job/attempt fencing,
+versioned MinIO BlobStore, verified SHA-256 upload and owner-authorized download.
+There is no external generation API or paid dependency.
+
+For an existing local installation, apply only pending migrations (never reset):
+
+```sh
+npx supabase migration up --local
+npm run dev
+# In another terminal:
+npm run worker:local
+```
+
+Sign in as the invited owner, create/open a product, then select **Generate planner
+PDF**. Refresh build status until succeeded and select **Download planner PDF**.
+Open the downloaded PDF in Preview or a PDF annotation app. Requests for the same
+revision and planner edition reuse the same job. The existing Run test build
+remains available as an independent infrastructure check. This fixed edition does
+not personalize its editorial content from the product's display name.
+
+For a quick local PDF preview without database or storage persistence:
+
+```sh
+npm run planner:preview
+open output/pdf/atelier-aurelia-undated-weekly.pdf
+```
+
+The 146-page, A4 portrait workbook contains:
+
+| Pages | Content |
+| --- | --- |
+| 1 | Cover |
+| 2 | Usage and print guide |
+| 3-38 | Twelve monthly sets: overview, six-habit tracker, reflection |
+| 39-142 | Fifty-two weekly spreads; all seven days have priority and task space |
+| 143-146 | Four lined notes pages |
+
+Print at 100% on A4. Other paper sizes require Fit to page. The PDF uses vector
+text/rules with 48-point margins, standard PDF serif/sans fonts, a white background
+and restrained grey-green ink. It is suitable for handwriting/annotation, with no
+fillable fields or hyperlinks. A physical printer proof remains an owner review
+step; automated checks cannot establish print feel or personal usability.
+
+Validation parses every page and content stream, checks exact section titles,
+page count/dimensions and PDF envelope, and computes SHA-256. Rendering is
+byte-identical across repeated runs with the pinned dependencies. The persisted
+job type `planner_pdf_v1` and PDF producer `aurelia-weekly-v1` identify the edition;
+future editorial changes should use a new version rather than silently replacing
+this edition. `plannerManifest` supplies stable page IDs and ordering.
+
+```sh
+npm run test:unit -- --coverage
+npm run test:workflows
+npm run test:storage
+npm run db:test
+npm run test:e2e -- zz-workflows.spec.ts
+node tools/run-with-env.mjs npm run build
+```
+
+The workflow integration test preserves its actual verified MinIO download in
+`output/pdf/atelier-aurelia-undated-weekly.pdf` and identifiers/checksum in
+`output/pdf/local-planner.json`. These generated files are ignored by Git. Tests
+add isolated local products; they do not reset the database. For visual inspection
+with Poppler: `pdftoppm -scale-to 1000 -png output/pdf/atelier-aurelia-undated-weekly.pdf tmp/pdfs/page`
+(create `tmp/pdfs` first). Inspect cover, guide, monthly overview, habits,
+reflection, both weekly pages and notes at readable zoom, plus page thumbnails.

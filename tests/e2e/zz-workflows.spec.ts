@@ -2,6 +2,7 @@ import { buffer } from 'node:stream/consumers';
 import { test, expect } from '@playwright/test';
 import { fixtureSession, fixtureToken, ownerEmail } from '../fixtures/storage';
 import { localWorker, localDispatch } from '../fixtures/workflows';
+import { validatePlanner } from '../../packages/workflows/src/planner';
 import { executeBuild } from '../../packages/workflows/src/execution';
 import { createS3BlobStore, objectStorageConfigFromEnvironment } from '../../packages/storage/src/index';
 
@@ -33,5 +34,36 @@ test('owner requests durable build and downloads its verified persisted output',
     await page.getByRole('link', { name: /download artifact/i }).click();
     const bytes = await buffer(await (await download).createReadStream());
     expect(JSON.parse(bytes.toString())).toMatchObject({ kind: 'phase1-test-build', jobId, productId, revisionId });
+  } finally { await worker.close(); }
+});
+
+test('owner generates a planner PDF and downloads it from product detail', async ({ page, request }) => {
+  const owner = await fixtureSession(ownerEmail);
+  const created = await owner.rpc('create_product_with_revision', { p_name: 'Planner browser acceptance' });
+  expect(created.error).toBeNull();
+  const productId = created.data[0].product_id;
+  await page.goto(`/auth/confirm?${new URLSearchParams({ token_hash: await fixtureToken(ownerEmail), type: 'email', next: '/products' })}`);
+  await page.getByRole('button', { name: /continue to studio/i }).click();
+  await expect(page).toHaveURL(/\/products$/);
+  await page.goto(`/products/${productId}`);
+  await page.getByRole('button', { name: 'Generate planner PDF' }).click();
+  await expect(page.getByRole('status')).toContainText('Planner requested');
+  await page.getByRole('button', { name: 'Generate planner PDF' }).click();
+  const jobs = await owner.from('jobs').select('id').eq('product_id', productId);
+  expect(jobs.data).toHaveLength(1);
+  const worker = localWorker();
+  try {
+    const runId = await localDispatch(worker, jobs.data![0].id);
+    const config = objectStorageConfigFromEnvironment(process.env);
+    if (!config.endpoint || !['localhost', '127.0.0.1'].includes(new URL(config.endpoint).hostname)) throw new Error('Local MinIO required');
+    await executeBuild(worker.repository, createS3BlobStore(config), config.bucket, { jobId: jobs.data![0].id, runId, attemptNumber: 1 });
+    await page.getByRole('link', { name: 'Refresh build status' }).click();
+    const link = page.getByRole('link', { name: /download planner pdf/i });
+    await expect(link).toBeVisible();
+    const unauthorized = await request.get((await link.getAttribute('href'))!, { maxRedirects: 0 });
+    expect(unauthorized.status()).toBe(404);
+    const download = page.waitForEvent('download'); await link.click();
+    const bytes = await buffer(await (await download).createReadStream());
+    expect((await validatePlanner(bytes)).pageCount).toBe(146);
   } finally { await worker.close(); }
 });

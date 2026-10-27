@@ -5,6 +5,7 @@ import { ownerAccess } from "../auth/access";
 
 const identifier = z.uuid();
 const storedArtifact = z.object({
+  media_type: z.enum(["text/plain", "application/pdf"]).default("text/plain"),
   id: identifier, account_id: identifier, product_id: identifier, revision_id: identifier,
   storage_bucket: z.string().min(1), storage_key: z.string().min(1),
   storage_version_id: z.string().min(1).refine(value => value !== "null"), state: z.literal("available"),
@@ -24,12 +25,12 @@ export async function artifactDownload(value: unknown, id: string, getStorage: (
   try {
     const client = value as SupabaseClient;
     const { data, error } = await client.from("artifacts")
-      .select("id, account_id, product_id, revision_id, state, storage_bucket, storage_key, storage_version_id")
+      .select("id, account_id, product_id, revision_id, state, storage_bucket, storage_key, storage_version_id, media_type")
       .eq("account_id", access.accountId).eq("id", id).eq("state", "available").maybeSingle();
     if (error) return { kind: "unavailable" } as const;
     if (!data) return { kind: "missing" } as const;
     const row = storedArtifact.parse(data);
-    const key = artifactStorageKey({ accountId: row.account_id, productId: row.product_id, revisionId: row.revision_id, artifactId: row.id });
+    const key = artifactStorageKey({ accountId: row.account_id, productId: row.product_id, revisionId: row.revision_id, artifactId: row.id, mediaType: row.media_type });
     if (row.account_id !== access.accountId || row.id !== id || row.storage_key !== key) return { kind: "unavailable" } as const;
     const storage = getStorage();
     if (row.storage_bucket !== storage.bucket) return { kind: "unavailable" } as const;

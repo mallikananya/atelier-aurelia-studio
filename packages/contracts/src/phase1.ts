@@ -52,7 +52,7 @@ export const ArtifactRecordV1 = z.strictObject({
   productId: Identifier,
   revisionId: Identifier,
   jobId: Identifier,
-  role: z.literal("phase1-test-build"),
+  role: z.enum(["phase1-test-build", "planner-pdf"]),
   state: z.literal("available"),
   sha256: Sha256,
   sizeBytes: z.number().int().positive(),

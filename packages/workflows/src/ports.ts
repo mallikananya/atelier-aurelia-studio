@@ -8,6 +8,7 @@ export interface DispatchClaim {
 export interface ExecutionInput { jobId: string; runId: string; attemptNumber: number }
 export interface ExecutionContext {
   jobId: string; accountId: string; productId: string; revisionId: string;
+  jobType?: 'phase1_test_build' | 'planner_pdf_v1';
   revisionName: string; contentSha256: string; status: string; maxAttempts: number;
 }
 export interface WorkflowRepository {
@@ -17,7 +18,7 @@ export interface WorkflowRepository {
   withExecutionLock<T>(jobId: string, work: (repository: WorkflowRepository) => Promise<T>): Promise<T>;
   executionContext(jobId: string, runId: string): Promise<ExecutionContext>;
   beginExecution(input: ExecutionInput): Promise<{ state: 'started' | 'succeeded'; attemptId: string | null }>;
-  complete(input: { jobId: string; attemptId: string; artifactId: string; bucket: string; result: ImmutablePutResult }): Promise<void>;
+  complete(input: { jobId: string; attemptId: string; artifactId: string; bucket: string; mediaType?: string; result: ImmutablePutResult }): Promise<void>;
   fail(input: { jobId: string; attemptId: string; isFinal: boolean }): Promise<void>;
 }
 export type BuildDispatcher = WorkflowDispatcher;

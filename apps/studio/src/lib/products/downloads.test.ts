@@ -92,3 +92,13 @@ it("honors validated server-configured expiration", async () => {
   await artifactDownload(client, id, () => storage);
   expect(storage.createSignedDownload).toHaveBeenCalledExactlyOnceWith(key, "version-1", 120);
 });
+
+it('signs the PDF key only when trusted media type matches its canonical path', async () => {
+  const client = backend(); const storage = signer();
+  const pdfKey = key.replace('payload.txt', 'planner.pdf');
+  client.query.maybeSingle.mockResolvedValue({ data: { ...record, storage_key: pdfKey, media_type: 'application/pdf' }, error: null } as never);
+  expect((await artifactDownload(client, id, () => storage)).kind).toBe('ok');
+  expect(storage.createSignedDownload).toHaveBeenCalledWith(pdfKey, 'version-1', 60);
+  client.query.maybeSingle.mockResolvedValue({ data: { ...record, media_type: 'application/pdf' }, error: null } as never);
+  expect((await artifactDownload(client, id, () => storage)).kind).toBe('unavailable');
+});
