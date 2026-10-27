@@ -11,6 +11,16 @@ insert into auth.users (id, email) values
  ('61000000-0000-4000-8000-000000000001', 'products-owner@example.test'),
  ('61000000-0000-4000-8000-000000000002', 'products-other@example.test'),
  ('61000000-0000-4000-8000-000000000003', 'products-nonmember@example.test');
+insert into public.accounts (id, name, created_by)
+select '62000000-0000-4000-8000-000000000001', 'Products fixture', '61000000-0000-4000-8000-000000000001'
+where not exists (
+  select 1 from public.account_memberships where user_id = '61000000-0000-4000-8000-000000000001'
+);
+insert into public.account_memberships (account_id, user_id, role)
+select '62000000-0000-4000-8000-000000000001', '61000000-0000-4000-8000-000000000001', 'owner'
+where not exists (
+  select 1 from public.account_memberships where user_id = '61000000-0000-4000-8000-000000000001'
+);
 insert into products_fixture select 'account', account_id from public.account_memberships
 where user_id = '61000000-0000-4000-8000-000000000001';
 insert into public.accounts (id, name, created_by) values

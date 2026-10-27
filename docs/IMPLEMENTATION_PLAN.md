@@ -20,7 +20,8 @@ Exit: repository can build/typecheck and architecture tests prohibit legacy temp
 - implement invite-only Supabase magic-link authentication with no public signup or MFA UI;
 - implement the single-owner Products flow and immutable revision 1 creation;
 - implement private S3 / local MinIO writes using server-generated keys, SHA-256 verification, conditional no-overwrite, versioning, and short-lived authorized downloads;
-- implement a Trigger.dev Cloud v4 dummy workflow that persists progress independently of the browser and Vercel deployment;
+- implement provider-neutral durable workflow execution with a local runner and an
+  optional Trigger.dev Cloud v4 adapter;
 - add structured observability, integration tests, pgTAP security tests, Playwright coverage, and CI gates.
 
 Exit acceptance flow:
@@ -33,7 +34,21 @@ Exit acceptance flow:
 6. Download the immutable dummy artifact through an authorized short-lived URL.
 7. Confirm product, revision, job, events, artifact metadata, SHA-256 provenance, and object bytes remain durable.
 
-Do not begin Phase 2 while implementing Phase 1. The test-build action is infrastructure validation, not a product generator, and it must not add product templates, families, themes, design profiles, or other fixed creative catalogs.
+The test-build action is infrastructure validation, not a product generator, and it
+must not add product templates, families, themes, design profiles, or other fixed
+creative catalogs. Cloud acceptance is tracked separately and does not block the
+local-first Phase 2 planning milestone.
+
+Do not begin Phase 2 during the local-first infrastructure task. The milestone below
+is identified for the next separately authorized implementation session only.
+
+### Phase 2A — Inspectable planner ProductSpec
+
+The smallest next milestone is one rough planner concept producing a persisted,
+immutable, schema-valid Product Brief, Visual DNA, deliverable plan, and stable-ID
+page manifest that the owner can inspect in Studio. Use a provider-neutral generation
+boundary and deterministic fixtures; exclude PDF/image rendering, listing generation,
+and Etsy automation.
 
 ## Phase 2 — Creative Director + structured product planning
 - conversation persistence

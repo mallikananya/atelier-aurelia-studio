@@ -1,22 +1,59 @@
-# Phase 1 local development
+# Local-first development
 
 ## Prerequisites
 
 - Node.js 22 and npm
 - Docker Desktop (required by the Supabase CLI and MinIO Compose service)
-- A Trigger.dev account/project for the real durable-worker path
+- `openssl` for generating local-only credentials
+
+Trigger.dev Cloud, AWS, production SMTP, and any paid service are optional. The
+default local path uses Supabase's Docker-backed PostgreSQL/Auth/Mailpit stack,
+MinIO, and the repository's local workflow runner.
 
 ## Setup
 
-1. Copy `.env.example` to `.env` and set non-production local credentials.
-2. Run `npm ci`.
-3. Run `npm run db:start`; copy the printed publishable and service-role keys into `.env`.
-4. Run `npm run db:reset` to replay migrations and test seed data.
-5. Run `npm run infra:start` to start MinIO and create the private, versioned artifact bucket.
-6. Run `npm run dev` for the Studio.
-7. Run the Trigger.dev development command documented by `apps/worker` once that milestone is installed.
+1. Install dependencies with `npm ci`.
+2. Copy `.env.example` to `.env` if it does not already exist. Set distinct,
+   randomly generated local values for `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`,
+   `AWS_ACCESS_KEY_ID`, and `AWS_SECRET_ACCESS_KEY`.
+3. Start the existing local services with `npm run local:start`. This is
+   non-destructive: it neither resets PostgreSQL nor removes Docker volumes.
+4. Run `supabase status -o env` and copy `PUBLISHABLE_KEY` to
+   `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` and `SERVICE_ROLE_KEY` to
+   `SUPABASE_SERVICE_ROLE_KEY` in `.env`.
+5. Prepare a restricted local worker login by applying
+   `supabase/admin/prepare_worker.sql`, verifying it with
+   `supabase/admin/verify_worker.sql`, then enabling `atelier_worker_login` with a
+   local-only random password. Set `WORKER_DATABASE_URL` to that login on
+   `127.0.0.1:54322`; never use the `postgres` or service-role credentials.
+6. Start the Studio with `npm run dev` and, in a second terminal, the local worker
+   with `npm run worker:local`.
 
-Mail from local Supabase Auth appears in Inbucket at `http://127.0.0.1:54324`. The MinIO console is at `http://127.0.0.1:9001`.
+The worker-role commands are intentionally interactive so its password is not placed
+in shell history:
+
+```sh
+docker exec -i supabase_db_atelier-aurelia-studio psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f /dev/stdin < supabase/admin/prepare_worker.sql
+docker exec -i supabase_db_atelier-aurelia-studio psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f /dev/stdin < supabase/admin/verify_worker.sql
+docker exec -it supabase_db_atelier-aurelia-studio psql -U postgres -d postgres -c '\password atelier_worker_login'
+docker exec supabase_db_atelier-aurelia-studio psql -U postgres -d postgres -c 'alter role atelier_worker_login login'
+```
+
+The root `dev`, storage, workflow, and browser-test scripts load the ignored root
+`.env` explicitly. Mail from local Supabase Auth appears in Mailpit at
+`http://127.0.0.1:54324`. Supabase Studio is at `http://127.0.0.1:54323`; the MinIO
+console is at `http://127.0.0.1:9001`.
+
+Stop the foreground Studio and worker with `Ctrl-C`, then stop services without
+deleting data:
+
+```sh
+npm run local:stop
+```
+
+Do not use `npm run db:reset` for routine startup or verification. It destroys the
+project's local development database and is retained only for an explicitly approved,
+disposable clean-room acceptance run.
 
 Do not reuse local credentials in Vercel, Supabase, AWS, or Trigger.dev. `.env` is ignored and must never be committed.
 
@@ -31,14 +68,13 @@ Run the real local validation before changing database contracts:
 
 ```sh
 npm run db:start
-npm run db:reset
 npm run db:test
 ```
 
-`db:reset` destroys this project's local development database. The seed deliberately
-contains no owner, passwords, templates, or creative catalogs. Behavioral pgTAP fixtures
-create users and tenant data inside rollback transactions. Their temporary worker-role
+`db:test` is safe on a populated development database: behavioral pgTAP fixtures create
+their own users and tenant data inside rollback transactions. Their temporary worker-role
 grants exist only to exercise the production function grants and roll back with the data.
+`db:reset` remains destructive and requires explicit approval.
 
 Operational contracts for later adapters:
 
@@ -148,16 +184,15 @@ Endpoint credentials, non-HTTPS remote endpoints and malformed configuration fai
 closed. Local HTTP loopback is supported. The app reads storage configuration only
 in a server-only module after authorization; provider secrets never enter UI props.
 
-With the environment loaded in your shell (npm does not load the root `.env` for
-all test commands):
+The root development and real-service test scripts load `.env` through the checked-in
+launcher:
 
 ```sh
 npm run infra:start
-npm run db:reset
 npm run db:test
 npm test
 npm run test:storage
-npm run test:e2e
+npm run test:workflows
 npm run test:coverage
 npm run typecheck
 npm run lint
@@ -167,7 +202,8 @@ npm audit --omit=dev
 git diff --check
 ```
 
-The full browser suite must start after a clean disposable database reset. It runs
+The full browser suite is separate from routine non-destructive validation. It must
+start after an explicitly approved clean disposable database reset because it runs
 Auth and Products acceptance before storage fixtures, preserving the existing empty
 Products assertion. Storage fixtures leave immutable data in place; do not treat a
 second full run without reset as an empty-account test. The browser suite also needs
@@ -255,7 +291,7 @@ is a failure, never evidence of verified completion. No browser cancellation UI 
 added; an operator can cancel a bound run in Trigger. Final failed jobs remain
 terminal; use a new job identity for new work, never rearm a delivered outbox.
 
-### Cloud setup and the interactive dependency
+### Optional Trigger.dev Cloud setup
 
 Reuse the existing [Trigger.dev Cloud](https://cloud.trigger.dev) project
 `proj_fielriwlwflsqochecli`; do not create a duplicate project.
@@ -301,8 +337,9 @@ repository migrations before enabling Cloud schedules.
 
 Cloud workers cannot reach localhost Supabase/MinIO. Use a reachable staging
 PostgreSQL/Supabase and private S3 bucket for Cloud acceptance. Local CLI development
-can connect to local services; it still requires a Trigger Cloud project. Verify the
-two schedules are configured manually only after the database and AWS acceptance
+can connect to local services but still requires a Trigger Cloud project; the default
+`npm run worker:local` path does not. Verify the two schedules are configured manually
+only after the database and AWS acceptance
 prerequisites pass. Deployment does not install or enable schedules automatically.
 For the authorized Free Production preproduction smoke, follow
 [the isolation checks](CLOUD_DEPLOYMENT.md) and leave all schedules disabled.
@@ -311,16 +348,12 @@ Never point staging and production schedules at the same job database.
 ### Local acceptance and pending live acceptance
 
 `npm run test:workflows` uses real local PostgreSQL/MinIO and a temporary restricted
-LOGIN; only the Trigger dispatch transport is substituted. Run it after the full
-browser suite has provisioned local owner fixtures. Load the same local environment
-as storage tests plus the test-only Supabase administrative key for fixture login.
-Run the complete sequence from a clean disposable local database:
+LOGIN. It verifies both the existing durable workflow core and the local runner; only
+the Trigger Cloud transport is absent. The routine non-destructive sequence is:
 
 ```sh
-npm run db:reset
 npm run db:test
 npm test
-npm run test:e2e
 npm run test:workflows
 npm run test:storage
 npm run test:coverage
@@ -331,6 +364,10 @@ npm run guardrails
 npm audit
 npm audit --omit=dev
 ```
+
+Run `npm run test:e2e` only for an explicitly approved disposable clean-database
+acceptance run. Do not reset a working local database merely to satisfy its empty-owner
+fixture precondition.
 
 The production dependency tree has a patched `ws` override for the SDK's transitive
 socket client. The deployment CLI is downloaded on demand and is not part of the

@@ -4,6 +4,16 @@ grant usage on schema extensions to atelier_worker;
 select no_plan();
 
 insert into auth.users(id) values ('71000000-0000-4000-8000-000000000001');
+insert into public.accounts (id, name, created_by)
+select '72000000-0000-4000-8000-000000000001', 'Storage fixture', '71000000-0000-4000-8000-000000000001'
+where not exists (
+  select 1 from public.account_memberships where user_id = '71000000-0000-4000-8000-000000000001'
+);
+insert into public.account_memberships (account_id, user_id, role)
+select '72000000-0000-4000-8000-000000000001', '71000000-0000-4000-8000-000000000001', 'owner'
+where not exists (
+  select 1 from public.account_memberships where user_id = '71000000-0000-4000-8000-000000000001'
+);
 select set_config('request.jwt.claim.sub', '71000000-0000-4000-8000-000000000001', true);
 set local role authenticated;
 create temporary table storage_fixture as
@@ -37,7 +47,7 @@ select throws_ok($$select pg_temp.complete_storage(null,repeat('a',64),-1)$$,'22
 select throws_ok($$select pg_temp.complete_storage(null,repeat('a',64),12,'')$$,'22023',null,'empty storage version rejected');
 select throws_ok($$select pg_temp.complete_storage(null,repeat('a',64),12,null)$$,'22023',null,'missing storage version rejected');
 reset role;
-select is((select count(*) from public.artifacts),0::bigint,'all invalid completions leave no available metadata');
+select is((select count(*) from public.artifacts where id=(select artifact_id from storage_fixture)),0::bigint,'all invalid completions leave no available metadata');
 select is((select status from public.jobs where id=(select job_id from storage_fixture)),'running','invalid metadata leaves job running');
 set local role authenticated;
 select throws_ok($$select pg_temp.complete_storage()$$,'42501',null,'authenticated owner cannot bypass verified worker completion');
@@ -45,12 +55,12 @@ select throws_ok($$insert into public.artifacts(id) values(gen_random_uuid())$$,
 set local role atelier_worker;
 select is(pg_temp.complete_storage(),(select artifact_id from storage_fixture),'worker completion accepts exact canonical provenance');
 reset role;
-select is((select storage_key from public.artifacts),(select key from storage_identity),'available artifact retains canonical storage key');
-select is((select storage_version_id from public.artifacts),'verified-version','available artifact retains exact object version');
-select is((select revision_id from public.artifacts),(select revision_id from storage_fixture),'artifact belongs to exact immutable revision');
-select ok((select available_at is not null from public.artifacts),'completion records availability timestamp');
-select throws_ok($$delete from public.artifacts$$,'55000',null,'artifact provenance cannot be deleted');
-select throws_ok($$update public.artifacts set storage_version_id='replacement'$$,'55000',null,'artifact storage identity cannot be replaced');
+select is((select storage_key from public.artifacts where id=(select artifact_id from storage_fixture)),(select key from storage_identity),'available artifact retains canonical storage key');
+select is((select storage_version_id from public.artifacts where id=(select artifact_id from storage_fixture)),'verified-version','available artifact retains exact object version');
+select is((select revision_id from public.artifacts where id=(select artifact_id from storage_fixture)),(select revision_id from storage_fixture),'artifact belongs to exact immutable revision');
+select ok((select available_at is not null from public.artifacts where id=(select artifact_id from storage_fixture)),'completion records availability timestamp');
+select throws_ok($$delete from public.artifacts where id=(select artifact_id from storage_fixture)$$,'55000',null,'artifact provenance cannot be deleted');
+select throws_ok($$update public.artifacts set storage_version_id='replacement' where id=(select artifact_id from storage_fixture)$$,'55000',null,'artifact storage identity cannot be replaced');
 set local role authenticated;
 select is((select count(*) from public.artifacts),1::bigint,'owner reads completed artifact through RLS');
 select set_config('request.jwt.claim.sub', '71000000-0000-4000-8000-000000000099', true);

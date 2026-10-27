@@ -13,15 +13,25 @@ test("root scripts expose local infrastructure and Phase 1 validation", async ()
   const packageJson = JSON.parse(await text("package.json"));
 
   for (const script of [
+    "local:start",
+    "local:stop",
     "infra:start",
     "infra:stop",
     "db:start",
+    "db:stop",
     "db:reset",
     "db:test",
+    "worker:local",
     "test:e2e",
   ]) {
     assert.equal(typeof packageJson.scripts[script], "string", `missing npm script ${script}`);
   }
+
+  assert.match(packageJson.scripts.dev, /tools\/run-with-env\.mjs/);
+  assert.match(packageJson.scripts["worker:local"], /tools\/run-with-env\.mjs/);
+  assert.match(packageJson.scripts["test:e2e"], /tools\/run-with-env\.mjs/);
+  assert.match(packageJson.scripts["test:storage"], /tools\/run-with-env\.mjs/);
+  assert.match(packageJson.scripts["test:workflows"], /tools\/run-with-env\.mjs/);
 
   assert.equal(packageJson.devDependencies.vitest !== undefined, true);
   assert.equal(packageJson.devDependencies["@playwright/test"] !== undefined, true);
@@ -40,6 +50,8 @@ test("local Supabase authentication is private and redirect-scoped", async () =>
   assert.match(config, /additional_redirect_urls\s*=\s*\["http:\/\/127\.0\.0\.1:3000\/auth\/confirm"\]/);
   assert.match(config, /auth\.email\.template\.invite/);
   assert.match(config, /auth\.email\.template\.magic_link/);
+  assert.match(config, /\[local_smtp\][\s\S]*?enabled\s*=\s*true/);
+  assert.doesNotMatch(config, /\[inbucket\]/);
   for (const template of [invite, magicLink]) {
     assert.match(template, /TokenHash/);
     assert.doesNotMatch(template, /ConfirmationURL/);

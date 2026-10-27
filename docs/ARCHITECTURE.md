@@ -53,6 +53,11 @@ Application Services
 
 ## Phase 1 deployment architecture
 
+Local development uses the same application and domain boundaries with Supabase CLI
+PostgreSQL/Auth/Mailpit, MinIO through the S3 adapter, and the local workflow runner.
+Trigger.dev Cloud, hosted Supabase, AWS S3, and production SMTP are optional deployment
+adapters and are not required for local execution.
+
 ```text
 Browser
   │ magic-link session

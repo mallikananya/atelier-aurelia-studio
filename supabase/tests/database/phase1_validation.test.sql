@@ -3,6 +3,16 @@ grant atelier_worker to postgres with inherit false;
 grant usage on schema extensions to atelier_worker;
 select no_plan();
 insert into auth.users(id) values ('11000000-0000-4000-8000-000000000001');
+insert into public.accounts (id, name, created_by)
+select '12000000-0000-4000-8000-000000000001', 'Validation fixture', '11000000-0000-4000-8000-000000000001'
+where not exists (
+  select 1 from public.account_memberships where user_id = '11000000-0000-4000-8000-000000000001'
+);
+insert into public.account_memberships (account_id, user_id, role)
+select '12000000-0000-4000-8000-000000000001', '11000000-0000-4000-8000-000000000001', 'owner'
+where not exists (
+  select 1 from public.account_memberships where user_id = '11000000-0000-4000-8000-000000000001'
+);
 select set_config('request.jwt.claim.sub', '11000000-0000-4000-8000-000000000001', true);
 set local role authenticated;
 select throws_ok($$select public.create_product_with_revision(null)$$, '22023', null, 'NULL name fails at the RPC boundary');

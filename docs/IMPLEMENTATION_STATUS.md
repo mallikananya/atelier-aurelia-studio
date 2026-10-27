@@ -2,6 +2,33 @@
 
 Snapshot: 2026-09-21. Milestones 1–7 are complete; Milestone 8 repository implementation and local acceptance are complete, with Cloud provisioning/live acceptance pending; do not treat the remaining Phase 1 acceptance flow as implemented. This document records repository evidence and resume boundaries. Product requirements and architecture remain authoritative in [PRD](PRD.md), [Architecture](ARCHITECTURE.md), [Implementation plan](IMPLEMENTATION_PLAN.md), and [ADR 0003](adr/0003-phase-1-platform.md).
 
+## Local-first strategy update — 2026-10-27
+
+AWS, hosted email, hosted Supabase acceptance, and Trigger.dev Cloud acceptance are
+now deferred and may not block product development. The existing PostgreSQL,
+Supabase Auth, MinIO/S3, and durable-workflow boundaries remain intact. The supported
+default is Docker-backed local Supabase plus MinIO, Mailpit for captured Auth email,
+and the local workflow runner; Trigger.dev remains the optional cloud provider.
+
+Routine setup and verification must preserve the current database and Docker volumes.
+The pgTAP fixtures are transaction-isolated and no longer require a reset. The full
+browser suite still has a clean-database/owner-fixture precondition; report that
+precondition rather than resetting an existing developer database. Deferred work is
+listed in [`CLOUD_DEFERRED.md`](../CLOUD_DEFERRED.md).
+
+Current local-first verification:
+
+- Studio started through the root `.env` launcher; `/login` returned 200 and anonymous
+  `/products` access redirected to login. Local Auth and Mailpit health returned 200.
+- Populated-database pgTAP passed **218/218** without a reset.
+- The real local workflow suite passed **8/8**, including a queued job processed by the
+  local runner through PostgreSQL and MinIO; real MinIO acceptance passed **6/6**.
+- Repository tests passed **30/30**, configured Vitest passed **212/212**, and workspace
+  tests passed **17/17**. Coverage, typecheck, lint, production build, and architecture
+  guardrails passed.
+- Full Playwright was not rerun because its empty-owner fixture requires a destructive
+  reset; the existing developer database and Docker volumes were preserved.
+
 ## Step 1 cloud-readiness follow-up — 2026-10-22
 
 Repository preparation is complete and locally validated. **Remote staging and full
@@ -268,9 +295,10 @@ preserving no-retry semantics. This trades TCP/TLS connection reuse for predicta
 Phase 1 behavior; it does not weaken overwrite or integrity guarantees.
 
 Milestone 7 completes only private artifact storage and authorized downloads. Milestone 8 repository implementation now provides the durable workflow/dispatcher
-and Phase 1 test build described above. Its Cloud provisioning and browser-close/
-redeploy acceptance remain pending. Do not begin Phase 2 or
-the later Product Workspace. Production provider setup/live durability remain
+and Phase 1 test build described above. Cloud provisioning and browser-close/redeploy
+acceptance remain deferred and are not a Phase 2 gate under the local-first strategy.
+The smallest next product slice is Phase 2A, an inspectable planner ProductSpec; it
+has been identified but not started. Production provider setup/live durability remain
 unverified. CI runs static/unit/coverage/build checks but does not provision local
 Supabase/MinIO or run pgTAP/browser acceptance.
 

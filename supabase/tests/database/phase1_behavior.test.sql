@@ -30,12 +30,26 @@ insert into auth.users (id, email) values
  ('10000000-0000-4000-8000-000000000001', 'm4-owner@example.test'),
  ('10000000-0000-4000-8000-000000000002', 'm4-other@example.test'),
  ('10000000-0000-4000-8000-000000000003', 'm4-nonmember@example.test');
+insert into public.accounts (id, name, created_by)
+select '20000000-0000-4000-8000-000000000001', 'Primary tenant', '10000000-0000-4000-8000-000000000001'
+where not exists (
+  select 1 from public.account_memberships where user_id = '10000000-0000-4000-8000-000000000001'
+);
+insert into public.account_memberships (account_id, user_id, role)
+select '20000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', 'owner'
+where not exists (
+  select 1 from public.account_memberships where user_id = '10000000-0000-4000-8000-000000000001'
+);
 insert into fixture select 'account_a', account_id from public.account_memberships where user_id = '10000000-0000-4000-8000-000000000001';
 insert into public.accounts (id, name, created_by) values
  ('20000000-0000-4000-8000-000000000002', 'Second tenant', '10000000-0000-4000-8000-000000000002');
 insert into public.account_memberships values
  ('20000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000002', 'owner', now());
-select is((select count(*) from public.account_memberships), 2::bigint, 'signup does not grant later users owner membership');
+select is((select count(*) from public.account_memberships where user_id in (
+ '10000000-0000-4000-8000-000000000001',
+ '10000000-0000-4000-8000-000000000002',
+ '10000000-0000-4000-8000-000000000003'
+)), 2::bigint, 'signup does not grant later users owner membership');
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);

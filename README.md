@@ -28,7 +28,8 @@ There is intentionally **no automated Etsy publish capability**.
 - `packages/contracts` — versioned domain-neutral schemas/contracts.
 - `packages/core` — state-machine and orchestration domain logic.
 - `packages/ai` — AI role definitions/prompts and structured-output boundaries.
-- `packages/storage` — storage interfaces; provider implementation comes later.
+- `packages/storage` — provider-neutral storage interfaces and the verified S3/MinIO adapter.
+- `packages/workflows` — durable workflow core, Trigger.dev adapter, and local runner.
 - `packages/etsy` — Etsy adapter boundary; draft-only.
 - `docs/PRD.md` — authoritative product requirements.
 - `docs/ARCHITECTURE.md` — technical architecture and invariants.
@@ -45,4 +46,11 @@ There is intentionally **no automated Etsy publish capability**.
 
 ## Status
 
-Greenfield foundation. Phase 0 establishes architecture, contracts, Studio shell, tests, and CI before external side effects are enabled.
+Phase 1's local platform is implemented: invite-only Supabase Auth/PostgreSQL, private
+MinIO storage, immutable artifacts, Products, and durable workflow boundaries. Local
+development does not require AWS, production SMTP, or Trigger.dev Cloud. See
+[`docs/LOCAL_DEVELOPMENT.md`](docs/LOCAL_DEVELOPMENT.md) for commands and
+[`CLOUD_DEFERRED.md`](CLOUD_DEFERRED.md) for intentionally postponed cloud work.
+
+The next product milestone is Phase 2A: an inspectable, schema-valid planner
+ProductSpec. It is identified only; implementation has not begun.

@@ -3,6 +3,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import type { WorkflowRepository } from '../../packages/workflows/src/ports';
 import { executeBuild } from '../../packages/workflows/src/execution';
 import { dispatchOne } from '../../packages/workflows/src/dispatcher';
+import { processLocalCycle } from '../../packages/workflows/src/local-runner';
 import { createS3BlobStore, objectStorageConfigFromEnvironment } from '../../packages/storage/src/index';
 import { localWorker, localDispatch, queuedBuild } from '../fixtures/workflows';
 
@@ -13,6 +14,19 @@ const worker = localWorker();
 afterAll(() => worker.close());
 
 describe('Durable execution against real PostgreSQL and MinIO', () => {
+  it('runs a queued build through the local-only dispatcher and executor', async () => {
+    const fixture = await queuedBuild();
+    expect(await processLocalCycle(worker.repository, store, config.bucket, {
+      maxAttempts: 3,
+      retryBackoffMs: 50,
+    })).toBe(true);
+    const job = await fixture.owner.from('jobs').select('status,attempt_count').eq('id', fixture.jobId).single();
+    expect(job.data).toMatchObject({ status: 'succeeded', attempt_count: 1 });
+    const artifacts = await fixture.owner.from('artifacts').select('storage_version_id').eq('job_id', fixture.jobId);
+    expect(artifacts.data).toHaveLength(1);
+    expect(artifacts.data?.[0]?.storage_version_id).toBeTruthy();
+  });
+
   it('deduplicates enqueue/dispatch/replay and verifies persisted exact-version output', async () => {
     const fixture = await queuedBuild();
     const duplicate = await fixture.owner.rpc('enqueue_phase1_test_build', fixture.args);

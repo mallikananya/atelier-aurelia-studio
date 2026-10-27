@@ -6,6 +6,7 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src trigger.config.ts",
+    "worker:local": "tsc -p tsconfig.json && cd ../.. && node tools/run-with-env.mjs node packages/workflows/dist/workflows/src/local-runner.js",
     "trigger:dev": "npx trigger.dev@4.6.3 dev",
     "trigger:deploy": "node -e \"console.error('Choose an explicit deployment target: trigger:deploy:preproduction or trigger:deploy:staging'); process.exit(1)\"",
     "trigger:prepare:preproduction": "TRIGGER_PROJECT_REF=proj_fielriwlwflsqochecli npx trigger.dev@4.6.3 deploy --env prod --dry-run --skip-update-check",
