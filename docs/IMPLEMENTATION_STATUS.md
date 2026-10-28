@@ -341,3 +341,32 @@ pypdf parsing confirmed all 146 A4 pages. The existing Zod dependency was update
 from 4.6.4 to 4.6.7 to resolve an audit finding; clean install reports zero
 vulnerabilities. The review's cross-job-type idempotency collision was fixed and
 verified in both directions against local PostgreSQL.
+
+## CE-01 — Domain-neutral creative planning contracts
+
+Implemented a standalone provider-neutral planning service and explicitly versioned
+creative brief, deliverable plan, stable-ID page manifest, provenance and revision
+planning envelope. Existing ProductSpec/PageSpec/VisualDNA, Phase 1 and fixed planner
+implementations are unchanged. See [CE-01 contract documentation](ARCHITECTURE.md#ce-01--creative-planning-foundation).
+
+The service validates provider JSON with a maximum of three total attempts, rejects
+invalid caller input before generation, preserves caller-owned revision identity,
+and returns explicit sanitized errors. It validates page counts/order, unique IDs,
+acyclic page dependencies, source/deliverable references and retained page IDs.
+The complete envelope is bounded by the existing 64 KiB JSONB revision-content
+limit; expanded geometry is excluded. Contrasting botanical reading and retro
+travel acceptance fixtures exercise the same service, without creative catalogs.
+
+Verification: 40 new behavioral tests; 259 total Vitest tests pass; full repository
+and workspace tests and coverage gates pass. Coverage: 97.70% lines, 96.90%
+statements, 94.79% branches and 95.10% functions. Typecheck, lint, environment-loaded
+production build, architecture guardrails and diff whitespace checks pass. Initial
+focused review identified oversized-input preflight and dynamic error-path leakage;
+both were fixed with regression tests. Dependency audit/commit delivery is recorded
+in the task outcome rather than assumed here.
+
+No Studio wiring, live model calls, persistence writes, new migrations, generated
+artwork, renderer changes or marketplace integration were added. Next scope is
+CE-02: connect freeform idea input and inspectable planning to authenticated,
+immutable revision persistence, while keeping provider availability explicit.
+Do not treat CE-01 as completion of original Phase 2 or Phase 3.

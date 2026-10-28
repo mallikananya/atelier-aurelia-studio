@@ -8,6 +8,8 @@ export default defineConfig({
       provider: "v8",
       include: [
         "packages/contracts/src/phase1.ts",
+        "packages/contracts/src/planning.ts",
+        "packages/ai/src/planning.ts",
         "packages/core/src/jobs.ts",
         "packages/workflows/src/**/*.ts",
         "packages/storage/src/artifact-keys.ts",

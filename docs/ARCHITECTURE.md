@@ -110,3 +110,80 @@ The current experience is deliberately single-owner. Accounts, memberships, and 
 Phase 1 platform credentials live only in Vercel, Trigger.dev, GitHub, Supabase, AWS, or local environment secret stores. They are never returned to browser code or written to application tables. A provider-neutral `SecretStore` port may define the later boundary, but AWS KMS and account-secret persistence are deferred until account-scoped credentials exist.
 
 Phase 1 recovery uses Supabase managed backups and S3 versioning. A future operations milestone should enable the appropriate Postgres point-in-time recovery tier, scheduled logical exports, restore drills, and—if the risk profile requires it—cross-region object replication. Those mechanisms are documented, not implemented speculatively now.
+
+## CE-01 — Creative planning foundation
+
+`packages/contracts/src/planning.ts` is the versioned planning entry point;
+`packages/ai/src/planning.ts` provides `planProduct(provider, request)`. These are
+standalone domain/service modules, not yet connected to Studio, persistence or a
+live provider. Existing ProductSpec, PageSpec, VisualDNA, revision and artifact
+contracts remain unchanged. The fixed planner is not used by this service.
+
+The contracts are:
+
+| Contract | Version | Purpose |
+| --- | --- | --- |
+| CreativeBriefV1 | `creative-brief/1` | Customer, job-to-be-done, concept, differentiation, visual direction, risks and assumptions |
+| PageManifestV1 | `page-manifest/1` | Ordered, stable-ID pages with purpose/density, page dependencies and source references; no elements or geometry |
+| DeliverablePlanV1 | `deliverable-plan/1` | Named PDF/PNG output intentions, print/digital/preview usage, descriptive page size and ordered page references |
+| CreativePlanV1 | `creative-plan/1` | Provider-generated brief, VisualDNA, manifest and deliverable plan |
+| PlanningProvenanceV1 | `planning-provenance/1` | Idea, input hash, source provenance, generator/prompt versions, timestamp, attempts and retained page IDs |
+| PlanningEnvelopeV1 | `planning-envelope/1` | Validated plan and provenance bound to caller-supplied product/revision/parent identity |
+
+The manifest derives its vocabulary from PageSpec while excluding `elements`.
+Planning VisualDNA refines the existing schema with bounded nonempty text and a
+nonempty palette; it remains creative intent, not resolved fonts or render styles.
+Source records reuse InspirationRef. Strict objects reject undeclared fields,
+including expanded geometry and model-authored revision metadata. Supported output
+formats describe technical capabilities, not a product or aesthetic catalog.
+
+`StructuredPlanningProvider.generate` receives the idea, source references,
+retained page IDs, expected plan version, attempt number and bounded validation
+feedback. It returns JSON text. Adapters own transport timeouts/cancellation;
+CE-01 bounds total calls, not elapsed time. No SDK, network call, persistence or
+model selection is implemented. Generator and prompt metadata are supplied by the
+trusted caller and must describe the injected adapter accurately.
+
+The service allows at most **three total calls** (initial generation plus two
+repairs). Invalid JSON, schema failures, broken references and excessive output
+consume that fixed budget. Repairs receive the previous bounded response and
+path/code diagnostics; semantic errors include fixed schema-authored messages.
+Oversized/non-text output is not echoed back. Provider exceptions return a
+sanitized `provider_failure` immediately, without transport retries. Invalid input
+returns `invalid_input` with zero attempts; exhaustion returns `invalid_output`.
+Errors contain at most 20 issues and redact dynamic palette keys. The result is a
+discriminated success/error union, never an implicitly accepted partial plan.
+
+Validation enforces unique node IDs, contiguous manifest order starting at one,
+page-count consistency, acyclic known page dependencies, unique known source
+references, ordered deliverable references, and coverage of every page by an
+output. Limits are 200 pages, 20 deliverables, 20 sources and 2,000 characters per
+prose field. These are bounded CE-01 capabilities, not universal product limits.
+All versions must match exactly. Revision 1 has no parent; later revisions require
+a different parent ID. Database authorization, parent existence and cross-product
+lineage checks remain the persistence boundary's responsibility.
+
+Caller-supplied `retainedPageIds` must survive generation. This protects explicitly
+retained identities, but does not infer edit targets or prove semantic continuity.
+Future revision orchestration must supply those constraints from authoritative
+prior state. Dependencies currently describe page-to-page and page-to-source
+relationships; asset/render/QA dependency graphs remain later work.
+
+The entire envelope is intended to be revision `content`, not nested within extra
+metadata. The existing SQL append command records its outer persistence version
+as `phase1.1`; the content carries its own `planning-envelope/1` version. The service
+does not invoke that command or change the database. Input is limited to 16 KiB,
+raw provider output to 64 KiB, and the complete validated envelope to 65,536 bytes
+of PostgreSQL-style JSONB text, including UTF-8 and separator spaces. Numeric fields
+are bounded integers, avoiding exponent-expansion ambiguity. NUL and unpaired
+surrogates are rejected. Additional wrappers require their own total-size check.
+The byte estimator is not a content-hash algorithm: database JSONB hashing remains
+authoritative. `inputSha256` hashes the normalized JSON representation of idea,
+sources and retained IDs; prompt/generator versions are recorded separately.
+
+Acceptance fixtures in `packages/ai/src/fixtures/planning.ts` exercise contrasting
+French romantic reading and bold retro travel concepts through the same service.
+They are test data, not production defaults or selectable presets. No original
+artwork, rendered design, persisted conversation, approval or Etsy behavior is
+claimed. Follow-on work must preserve immutable revision/asset lineage, selective
+repair identities, same-lineage preview/export and exact commercial release seals.
