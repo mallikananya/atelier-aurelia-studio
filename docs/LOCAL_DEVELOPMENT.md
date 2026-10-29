@@ -450,3 +450,43 @@ add isolated local products; they do not reset the database. For visual inspecti
 with Poppler: `pdftoppm -scale-to 1000 -png output/pdf/atelier-aurelia-undated-weekly.pdf tmp/pdfs/page`
 (create `tmp/pdfs` first). Inspect cover, guide, monthly overview, habits,
 reflection, both weekly pages and notes at readable zoom, plus page thumbnails.
+
+## CE-02 local planning
+
+Apply the pending function migration with `npx supabase migration up --local`; do not
+reset the database. Sign in, create a product in Products, then select it in Studio
+(or open its detail page). Enter a freeform idea and choose **Generate planning
+revision**. Each success appends an immutable revision. Expand history to inspect
+briefs, visual direction, page identities/dependencies, deliverables and provenance.
+The fixed planner build remains a separate, unchanged action.
+
+Planning is explicitly unavailable until a local provider is configured. Supply these
+server-only values in the ignored `.env`:
+
+- `PLANNING_PROVIDER_URL`: an HTTP endpoint at literal `127.0.0.1` or `[::1]`, e.g.
+  `http://127.0.0.1:11435/plan`. DNS names, remote hosts, credentials and redirects
+  are rejected.
+- `PLANNING_PROVIDER_ID` and `PLANNING_PROVIDER_VERSION`: identify the actual local
+  generator/model adapter, not a fixture or assumed cloud model.
+- `PLANNING_PROMPT_VERSION`: version of the prompt implemented by that adapter.
+
+The endpoint accepts the JSON `GenerationRequest` defined in
+`packages/ai/src/planning.ts`: idea, sources, retainedPageIds, schemaVersion, attempt,
+issues and optional previousOutput. It returns raw JSON matching `CreativePlanV1`,
+not an envelope or an API-specific response wrapper. It owns model/prompt selection;
+Studio owns lineage and provenance. Each call has a 30-second deadline, and CE-01
+allows three total attempts. No local model is installed or bundled by CE-02.
+
+Run the non-destructive CE-02 browser acceptance suite separately from the old
+clean-account auth/Products suite:
+
+```sh
+node tools/run-with-env.mjs node_modules/@playwright/test/cli.js test --config playwright.ce02.config.mts
+```
+
+It starts an isolated Studio on port 3102 and test-only fixture provider on 3103,
+uses the existing local owner fixture, and adds products without deleting history.
+It covers Studio planning, revision inspection, stale forms, concurrent authenticated
+RPC appends and generation/validation failures. It never invokes a live model. Stop
+other development servers sharing `apps/studio/.next` before this run. Database pgTAP
+tests use rollback transactions and can run on the populated local database.

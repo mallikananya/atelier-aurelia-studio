@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import {
   PlanningRequestV1, PlanningEnvelopeV1, PLANNING_MAX_ATTEMPTS, PLANNING_MAX_BYTES,
   type PlanningEnvelope, type PlanningRequest,
-} from '../../contracts/src/planning.js';
+} from '../../contracts/src/planning.ts';
 
 export interface PlanningIssue { path: string; code: string; message?: string }
 export interface GenerationRequest {

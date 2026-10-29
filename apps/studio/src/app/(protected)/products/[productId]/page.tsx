@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { planningHistory } from "@/lib/planning/service";
+import { PlanningForm } from "../planning-form";
+import { PlanningResults } from "../planning-results";
 import { listTestBuilds } from "@/lib/products/builds";
 import { BuildForm } from "../build-form";
 import { notFound } from "next/navigation";
@@ -16,11 +19,17 @@ export default async function ProductPage({ params }: { params: Promise<{ produc
   const { product, revision } = result;
   const artifacts = await listRevisionArtifacts(await createAuthClient(), product.id, revision.id);
   const builds = await listTestBuilds(await createAuthClient(), product.id);
+  const history = await planningHistory(await createAuthClient(), product.id);
   return <>
     <Link className="product-link" href="/products">← Back to Products</Link>
     <div className="eyebrow product-heading">Product</div>
     <h1>{product.name}</h1>
     <p className="status">{product.status.replaceAll("_", " ")}</p>
+    <section className="card revision-card">
+      <h2>Product planning</h2>
+      {history.kind === "ok" ? <PlanningForm productId={product.id} revisionId={revision.id} /> : <p role="alert">Planning history could not be verified. Refresh to try again.</p>}
+    </section>
+    {history.kind === "ok" && <PlanningResults revisions={history.revisions} currentRevisionId={revision.id} />}
     <section className="card revision-card">
       <h2>Revision {revision.revision_number}</h2>
       <p className="lede">This saved revision is immutable. Its identity and contents are preserved.</p>

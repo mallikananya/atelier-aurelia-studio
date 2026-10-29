@@ -370,3 +370,53 @@ artwork, renderer changes or marketplace integration were added. Next scope is
 CE-02: connect freeform idea input and inspectable planning to authenticated,
 immutable revision persistence, while keeping provider availability explicit.
 Do not treat CE-01 as completion of original Phase 2 or Phase 3.
+
+## CE-02 — Studio planning and immutable revision persistence
+
+Implemented authenticated freeform planning on Studio and product detail, using the
+existing CE-01 provider-neutral service and schemas. Saved results expose briefs,
+visual direction, page identities/dependencies, deliverables, provenance and revision
+history. Reads validate complete paginated lineage; generation derives sources and
+retained identities from authoritative saved state. Errors distinguish unavailable
+providers, generation failures, invalid input/output, revision conflicts and uncertain
+writes. Ambiguous persistence never retries automatically.
+
+Approved forward migration `202610280001_ce02_planning_revisions.sql` replaces only
+`append_product_revision`. It binds envelope/row UUIDs atomically, authorizes account
+owners, and checks lineage and retained IDs under the existing optimistic product
+lock. Tables, history, grants, hashing and audit behavior are preserved. Outer row
+schema remains `phase1.1`; legacy products retain legacy JSON append support. Once
+planning begins, legacy downgrade is rejected to preserve page identity continuity.
+
+Verification on the existing local Supabase/PostgreSQL environment, without resets:
+
+- Forward migration applied with `supabase migration up --local`; its final function
+  definition reapplied successfully to verify practical idempotency.
+- All 250 pgTAP checks passed, including 32 CE-02 authorization, identity, retained-page,
+  lineage, stale-write and legacy cases. Existing Phase 1 checks remain green.
+- `npm test`: 304 Vitest cases plus 47 Node/workspace tests passed.
+- Full coverage gate passed: 98.08% lines, 97.21% statements, 95.25% branches,
+  95.65% functions.
+- Local storage integration: 6 passed; local workflow integration: 9 passed.
+- CE-02 browser suite: 5 passed, including Studio, immutable history, unavailable/
+  failed/invalid generation and simultaneous authenticated appends (one winner,
+  one conflict). Existing storage and workflow browser regressions: 8 passed,
+  including unchanged planner PDF generation and verified download.
+- Lint, typecheck, environment-loaded production build, architecture guardrails and
+  whitespace checks passed. Full `npm audit`: zero vulnerabilities; no dependency
+  changes. Focused security/code review found no remaining blockers.
+
+The old auth/Products browser suite requires a clean single-owner fixture and was
+not rerun on the populated database; its guards were not weakened and no data was
+reset or deleted. Provider acceptance used a test-only loopback HTTP fixture; no
+local model is bundled or installed. Real generation requires the explicit local
+adapter configuration documented in LOCAL_DEVELOPMENT.md. CE-02 retains all prior
+page IDs; selective replacement/removal, rendering changes and CE-03 remain out of
+scope. The unrelated existing `infra/aws/README.md` edit is excluded from delivery.
+
+Changed files are limited to Studio planning pages/components/actions/service/provider
+and their tests; the new SQL function migration and pgTAP tests; the CE-02 browser
+spec/config; migration-list and coverage configuration; local provider configuration
+examples and these existing docs. Two CE-01 source imports now use `.ts` so Next's
+source bundler resolves them; the corresponding package compiler flags rewrite
+extensions back to `.js` in emitted builds, preserving compiled package behavior.

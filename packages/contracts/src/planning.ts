@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { InspirationRef, PageSpec, VisualDNA } from './index.js';
+import { InspirationRef, PageSpec, VisualDNA } from './index.ts';
 
 export const PLANNING_MAX_BYTES = 65_536;
 export const PLANNING_MAX_INPUT_BYTES = 16_384;

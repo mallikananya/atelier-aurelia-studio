@@ -187,3 +187,41 @@ They are test data, not production defaults or selectable presets. No original
 artwork, rendered design, persisted conversation, approval or Etsy behavior is
 claimed. Follow-on work must preserve immutable revision/asset lineage, selective
 repair identities, same-lineage preview/export and exact commercial release seals.
+
+## CE-02 — Authenticated planning revisions
+
+Studio selects an existing owned product and accepts a freeform idea. Product detail
+exposes the same form and inspectable revision history. The server derives revision
+identity, parent, next number, source references and retained page IDs from validated
+persisted state, then calls CE-01 `planProduct`; it does not duplicate creative schema
+or repair logic. All pages from the current plan are retained in the next plan.
+Selective page removal/replacement is outside CE-02.
+
+The existing `append_product_revision` RPC now requires the product's account owner.
+For `planning-envelope/1`, it uses the envelope UUID as the row ID, checks product,
+parent and next revision number under the existing product lock, and checks retained
+IDs against the authoritative parent manifest. New manifests must retain those IDs.
+The database independently validates persistence identities; full creative schema
+validation remains CE-01's responsibility. Reads validate each envelope and its stored
+lineage before displaying it or using it as generation input. Corrupt history fails
+closed. History uses ascending paginated reads through a captured current pointer.
+
+This forward migration changes only the existing append function. Tables, existing
+rows, grants, append-only triggers, PostgreSQL JSONB hashes and audit events remain
+unchanged. Outer `schema_version` stays `phase1.1`; content carries the planning
+version. Legacy JSON appends remain supported for legacy products. Once a product
+has a planning envelope, a legacy downgrade is rejected so retained identities cannot
+be erased through the older RPC format. Existing build/enqueue functions are unchanged.
+
+The Server Action checks same-origin requests and authenticated ownership. Persistence
+never automatically retries: stale writes return a conflict; ambiguous responses tell
+the owner to inspect history. Missing/invalid provider configuration, refused/unreachable local endpoints and
+HTTP 404/429/503 report provider unavailable. Other transport/generation failures,
+invalid input and invalid generated output have distinct outcomes. No unvalidated
+provider content or exception details are returned in errors.
+
+An optional server-only loopback HTTP adapter implements CE-01's provider interface.
+It makes no calls unless explicitly configured, rejects redirects and non-loopback
+hosts, limits each call to 30 seconds and bounds response consumption to CE-01's output
+budget. The three-attempt repair limit remains in CE-01. No model SDK, paid service,
+production fixture generator, renderer or marketplace integration is introduced.
