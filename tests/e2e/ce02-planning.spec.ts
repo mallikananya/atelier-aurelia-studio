@@ -3,13 +3,16 @@ import { randomUUID } from 'node:crypto';
 import { test, expect, type Page } from '@playwright/test';
 import { readingPlan } from '../../packages/ai/src/fixtures/planning';
 import { planProduct } from '../../packages/ai/src/planning';
-import { fixtureSession, fixtureToken, ownerEmail } from '../fixtures/storage';
+import { fixtureSession, fixtureToken } from '../fixtures/storage';
+import { provisionPlanningOwner } from '../fixtures/planning';
 
 test.skip(process.env.CE02_BROWSER_TEST !== '1', 'Run with playwright.ce02.config.mts and its isolated local provider.');
 
 // This suite uses its own local HTTP provider and never calls a paid service.
 let provider: Server;
+let ownerEmail: string;
 test.beforeAll(async () => {
+  ownerEmail = await provisionPlanningOwner();
   provider = createServer(async (request, response) => {
     let body = '';
     for await (const chunk of request) body += chunk;
@@ -119,30 +122,27 @@ test('Studio composer saves a plan for the selected existing product', async ({ 
   expect(await revisions(owner, productId)).toHaveLength(2);
 });
 
-test('simultaneous authenticated database appends produce one winner and one conflict', async () => {
+test('authenticated clients cannot bypass planning validation through the public revision RPC', async () => {
   const owner = await fixtureSession(ownerEmail);
-  const created = await owner.rpc('create_product_with_revision', { p_name: 'CE02 concurrent append' });
+  const created = await owner.rpc('create_product_with_revision', { p_name: 'CE021 direct RPC bypass' });
   expect(created.error).toBeNull();
   const { product_id: productId, revision_id: revisionId } = created.data[0];
-  const envelopes = await Promise.all([1, 2].map(async () => {
-    const result = await planProduct({ generate: async () => JSON.stringify(readingPlan) }, {
-      productId, revisionId: randomUUID(), parentRevisionId: revisionId, revisionNumber: 2,
-      idea: 'A reading journal', createdAt: new Date().toISOString(), promptVersion: 'fixture/1',
-      generator: { id: 'concurrency-fixture', version: '1' }, sources: [], retainedPageIds: [],
+  const result = await planProduct({ generate: async () => JSON.stringify(readingPlan) }, {
+    productId, revisionId: randomUUID(), parentRevisionId: revisionId, revisionNumber: 2,
+    idea: 'A reading journal', createdAt: new Date().toISOString(), promptVersion: 'fixture/1',
+    generator: { id: 'browser-fixture', version: '1' }, sources: [], retainedPageIds: [],
+  });
+  if (!result.ok) throw new Error('Invalid planning fixture');
+  const before = await revisions(owner, productId);
+  for (const envelope of [result.envelope, { ...result.envelope, plan: {} }]) {
+    const rejected = await owner.rpc('append_product_revision', {
+      p_product_id: productId, p_expected_current_revision_id: revisionId,
+      p_name: 'CE021 direct RPC bypass', p_product_type: null, p_content: envelope,
     });
-    if (!result.ok) throw new Error('Invalid concurrency fixture');
-    return result.envelope;
-  }));
-  const results = await Promise.all(envelopes.map(envelope => owner.rpc('append_product_revision', {
-    p_product_id: productId, p_expected_current_revision_id: revisionId, p_name: 'CE02 concurrent append',
-    p_product_type: null, p_content: envelope,
-  })));
-  expect(results.filter(result => result.error === null)).toHaveLength(1);
-  expect(results.find(result => result.error)?.error?.code).toBe('40001');
-  const saved = await revisions(owner, productId);
-  expect(saved).toHaveLength(2);
-  expect(saved[1].content.revisionId).toBe(saved[1].id);
+    expect(rejected.error?.code).toBe('22023');
+    expect(await revisions(owner, productId)).toEqual(before);
+  }
   const audit = await owner.from('audit_events').select('id').eq('product_id', productId).eq('action', 'product.revision_created');
   expect(audit.error).toBeNull();
-  expect(audit.data).toHaveLength(1);
+  expect(audit.data).toHaveLength(0);
 });

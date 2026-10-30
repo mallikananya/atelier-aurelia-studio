@@ -225,3 +225,45 @@ It makes no calls unless explicitly configured, rejects redirects and non-loopba
 hosts, limits each call to 30 seconds and bounds response consumption to CE-01's output
 budget. The three-attempt repair limit remains in CE-01. No model SDK, paid service,
 production fixture generator, renderer or marketplace integration is introduced.
+
+
+## CE-02.1 — Trusted planning writes and bounded admission
+
+CE-02.1 supersedes CE-02's use of the public revision RPC for planning. The
+`append_product_revision` RPC preserves valid Phase 1 writes but rejects planning
+markers and envelope-shaped input, including missing-marker bypasses. Ordinary
+client roles cannot call `private.append_planning_revision` or directly write its
+admission state.
+
+The authenticated `reserve_planning_request` RPC derives the actor from `auth.uid()`,
+checks authoritative owner membership and expected revision, and atomically reserves
+capacity in `private.planning_requests`. An owner advisory transaction lock and
+product row lock serialize admissions across app instances. Limits are one active
+request per product, two per owner, five attempts per product per ten minutes, and
+ten per owner per ten minutes. Unique owner/request identities prevent replay.
+Reservations expire in 120 seconds; completed or expired attempts still count within
+the rate window. No job, outbox, scheduler, or background service is involved.
+
+Studio uses the existing CE-01 request schema before admission and the existing
+provider-neutral planning service after admission. The trusted PostgreSQL adapter in
+`packages/workflows/src/planning-persistence.ts` reuses that workspace's existing pg
+dependency and the CE-01 envelope schema, validating and copying the complete value
+immediately before SQL. It adds no workflow execution behavior. Its server-only Studio
+wrapper requires dedicated credentials; there is no administrator fallback.
+
+`atelier_planning_writer` is NOLOGIN and has only private schema usage and EXECUTE
+on append/release functions. A separate NOINHERIT server login assumes it locally
+inside each transaction. A reservation is an opaque capability created by the
+session-authorized admission RPC, not a client-supplied owner identity. The writer
+function derives the actor and expected revision from that reservation, rechecks
+and locks current owner membership, locks the product, and checks expiry after waits
+and immediately before insertion. It enforces row/envelope identity, parent/number,
+retained page identities, conflict detection, hashing, and atomic audit insertion.
+Full creative schema validation remains at the trusted CE-01 boundary; SQL does not
+reimplement it. The dedicated server credential is therefore part of that trusted
+boundary and must never be exposed to clients.
+
+Existing immutable history is unchanged. Invalid ancestors still block planning and
+are surfaced explicitly. Recovery is a manual, owner-reviewed replacement-product
+procedure described in LOCAL_DEVELOPMENT.md; there is no automatic repair, skipped
+ancestor, pointer rewind, or recovery write in CE-02.1.

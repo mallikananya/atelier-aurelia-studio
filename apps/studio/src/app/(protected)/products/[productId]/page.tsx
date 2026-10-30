@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import Link from "next/link";
 import { planningHistory } from "@/lib/planning/service";
 import { PlanningForm } from "../planning-form";
@@ -27,7 +28,7 @@ export default async function ProductPage({ params }: { params: Promise<{ produc
     <p className="status">{product.status.replaceAll("_", " ")}</p>
     <section className="card revision-card">
       <h2>Product planning</h2>
-      {history.kind === "ok" ? <PlanningForm productId={product.id} revisionId={revision.id} /> : <p role="alert">Planning history could not be verified. Refresh to try again.</p>}
+      {history.kind === "ok" ? <PlanningForm requestId={randomUUID()} productId={product.id} revisionId={revision.id} /> : <p role="alert">Planning history could not be verified. Saved revisions are unchanged; ask the operator to inspect the history before recovery.</p>}
     </section>
     {history.kind === "ok" && <PlanningResults revisions={history.revisions} currentRevisionId={revision.id} />}
     <section className="card revision-card">

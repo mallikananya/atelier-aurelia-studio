@@ -3,10 +3,11 @@
 import { useActionState, useState } from "react";
 import { generatePlanningAction } from "./planning-actions";
 
-export function PlanningForm({ productId, revisionId }: { productId: string; revisionId: string }) {
-  const [state, action, pending] = useActionState(generatePlanningAction, { message: "", idea: "", saved: false });
+export function PlanningForm({ productId, revisionId, requestId }: { productId: string; revisionId: string; requestId: string }) {
+  const [state, action, pending] = useActionState(generatePlanningAction, { message: "", idea: "", saved: false, requestId });
   const [idea, setIdea] = useState("");
   return <form action={action} aria-busy={pending}>
+    <input type="hidden" name="requestId" value={state.requestId ?? requestId} />
     <input type="hidden" name="productId" value={productId} />
     <input type="hidden" name="expectedRevisionId" value={revisionId} />
     <label htmlFor="planning-idea">Product planning idea</label>

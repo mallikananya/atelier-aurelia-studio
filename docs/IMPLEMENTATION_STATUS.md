@@ -420,3 +420,50 @@ spec/config; migration-list and coverage configuration; local provider configura
 examples and these existing docs. Two CE-01 source imports now use `.ts` so Next's
 source bundler resolves them; the corresponding package compiler flags rewrite
 extensions back to `.js` in emitted builds, preserving compiled package behavior.
+
+## CE-02.1 — Planning persistence and security hardening
+
+Implemented the approved forward migration
+`202610290001_ce021_planning_security.sql`. Planning envelopes are rejected by the
+public Phase 1 revision RPC. A dedicated server-only writer validates the complete
+CE-01 envelope immediately before private SQL; database-owned reservations provide
+owner authorization, bounded concurrency/rate limits, duplicate rejection and expiry
+fencing. The database retains independent ownership, identity, lineage, retained-page,
+conflict, hashing and atomic audit checks. Invalid historical planning remains visibly
+blocked and unchanged; recovery is manual and does not run automatically.
+
+Studio now reserves before invoking the provider, carries an explicit request identity,
+and explains admission, duplicate and expiry failures. The existing provider-neutral
+contracts, generation service and fixed planner functionality are preserved. The
+minimal ECC hook correction has separate regression coverage and is installed at the
+existing shared hook path; npm scripts and CI remain authoritative.
+
+Verified locally without resets or destructive operations:
+
+- Forward migration applied and registered; repeat application succeeded.
+- 282 pgTAP checks pass, including role isolation, direct-RPC rejection, ownership,
+  immutable history, lineage, rate limits, expiry and Phase 1 compatibility.
+- 332 Vitest tests and 70 Node/workspace tests pass; the latter include 23 hook tests.
+- Coverage gates pass: 98.24% lines, 97.53% statements, 95.69% branches, 95.97% functions.
+- 15 workflow/planning integration tests pass, including real concurrent admissions
+  and expiry while waiting on a product lock; six storage integration tests pass.
+- Five CE-02 browser tests and eight existing storage/workflow browser regressions
+  pass, including the unchanged planner PDF build/download.
+- Environment-loaded production build, lint, typecheck, architecture guardrails and
+  whitespace checks pass. Independent security review found no blocking write-path
+  defect; its local Docker connection concern was addressed with explicit scoped
+  configuration and regression tests.
+
+The owner-approved dependency remediation updates only the lockfile entry for
+`systeminformation` from 5.33.13 to 5.33.16. Its parent is
+`@opentelemetry/host-metrics@0.38.3`, introduced through
+`@trigger.dev/sdk@4.6.3 → @trigger.dev/core@4.6.3`; the parent's existing `^5.31.1`
+range accepts this patch. The published
+[GHSA-3f7j-7jwc-fxfj](https://github.com/advisories/GHSA-3f7j-7jwc-fxfj) identifies
+5.33.16 as patched. Full npm audit now reports zero vulnerabilities. No manifests,
+parent dependencies, or unrelated versions changed.
+
+The clean-account legacy Auth/Products browser suite was not run against the
+populated database. No real model, recovery action, scheduler, rendering change,
+marketplace work, or CE-02.2 work was introduced. The unrelated AWS README edits
+remain outside CE-02.1 delivery.

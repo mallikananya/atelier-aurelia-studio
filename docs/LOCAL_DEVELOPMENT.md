@@ -485,8 +485,86 @@ node tools/run-with-env.mjs node_modules/@playwright/test/cli.js test --config p
 ```
 
 It starts an isolated Studio on port 3102 and test-only fixture provider on 3103,
-uses the existing local owner fixture, and adds products without deleting history.
-It covers Studio planning, revision inspection, stale forms, concurrent authenticated
-RPC appends and generation/validation failures. It never invokes a live model. Stop
+provisions an isolated owner per run, and adds products without deleting history.
+It covers Studio planning, revision inspection, stale forms, direct RPC bypass
+rejection and generation/validation failures. It never invokes a live model. Stop
 other development servers sharing `apps/studio/.next` before this run. Database pgTAP
 tests use rollback transactions and can run on the populated local database.
+
+
+## CE-02.1 planning persistence and request admission
+
+Apply `202610290001_ce021_planning_security.sql` with
+`npx supabase migration up --local`. This forward migration does not rewrite any
+product, revision, or audit history. Existing Phase 1 revision writes keep the public
+RPC; planning envelopes must pass through the dedicated server writer. Never reset
+an existing database to apply this change.
+
+Provision a dedicated database LOGIN, separately from the migration, using a local
+administrator session. For a fresh installation, the following role has only the
+ability to assume the restricted planning writer. Set its password interactively
+with psql; do not place a real password in documentation or shell history:
+
+```sql
+create role atelier_planning_local login noinherit nosuperuser nocreatedb nocreaterole nobypassrls;
+grant atelier_planning_writer to atelier_planning_local;
+\password atelier_planning_local
+```
+
+Set `PLANNING_DATABASE_URL` in the ignored server `.env` to that login's PostgreSQL
+URL. The Studio adapter uses transaction-local `atelier_planning_writer`, which has
+only two private function grants and no direct table-write access. Do not reuse the
+worker, postgres, service-role, or browser credentials. Missing configuration leaves
+planning persistence explicitly unavailable; there is no privileged fallback.
+The migration and server change must be deployed together: old Studio planning
+writes intentionally fail closed after the migration.
+
+Host-based local development uses `127.0.0.1:54322`. For a Studio container on a
+trusted local Docker network, set `PLANNING_DATABASE_LOCAL_DOCKER=1` and use `db`,
+`host.docker.internal`, or `supabase_db_atelier-aurelia-studio` at the appropriate
+port. This explicit opt-in permits local non-TLS transport only for those names.
+Other remote hosts always require `sslmode=verify-full`. Connection URL query
+parameters cannot override the identity, host, or connection options. The planning
+provider remains the existing loopback-only adapter; this change adds no model or
+provider infrastructure.
+
+The authenticated admission RPC derives ownership from the session and permits
+one active request per product and two per owner. Rolling ten-minute limits are
+five admitted requests per product and ten per owner, including failed generation.
+A request identity cannot be reused, even after release or expiry. A fresh form or
+completed action supplies a new identity for a deliberate retry. Reservations expire
+after 120 seconds, beyond the existing three 30-second generation attempts. Their
+expiry is checked again after locks and immediately before persistence. Released,
+expired, or consumed reservations cannot authorize a revision write. Admission rows
+retain request identities; no cleanup scheduler or durable execution is introduced.
+If the server dies, expiry releases capacity without changing history.
+
+Invalid historical planning is quarantined logically: Studio reports invalid history
+and disables further planning. It does not delete, rewrite, skip, or automatically
+recover any revision. For an explicitly requested manual recovery, the operator first
+inspects the complete original chain and validates each envelope with CE-01. Preserve
+the original product and its hashes/audits; only after owner review may a new product
+be created and populated through normal validated planning. Record original product
+and revision identifiers in the recovery record; do not represent the replacement as
+a repaired descendant or reset the original pointer. CE-02.1 performs none of these
+recovery actions automatically.
+
+Additional verification:
+
+```sh
+npm run db:test
+npm run test:workflows
+node --test tests/pre-push-hook.test.mjs
+```
+
+Planning integration tests use fresh local owner accounts and preserve their fixture
+products. They exercise real parallel PostgreSQL sessions, including expiry while
+waiting for a product lock. The old clean-account Auth/Products browser suite still
+requires its separate pristine fixture; do not reset a populated database to run it.
+
+The minimal ECC hook correction is versioned in `tools/git-hooks/pre-push`. It fails
+closed when runtime/script discovery or an existing required check fails. It delegates
+to the existing npm scripts; CI remains authoritative. To update the already configured
+shared hook, install this tested file at the path returned by `git config --get
+core.hooksPath` (currently `~/.codex/git-hooks/pre-push`). Explicit opt-outs remain
+explicit; missing tools no longer act as implicit opt-outs.

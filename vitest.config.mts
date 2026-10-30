@@ -19,6 +19,7 @@ export default defineConfig({
         "apps/studio/src/lib/products/service.ts",
         "apps/studio/src/lib/planning/service.ts",
         "apps/studio/src/lib/planning/provider.ts",
+        "apps/studio/src/lib/planning/persistence.ts",
         "apps/studio/src/app/(protected)/products/planning-actions.ts",
         "apps/studio/src/lib/products/builds.ts",
         "apps/studio/src/app/(protected)/products/build-actions.ts",

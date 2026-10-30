@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
-import { planningHistory, generatePlanningRevision, PlanningProviderUnavailableError } from "./service";
+import { planningHistory, generatePlanningRevision as generate, PlanningProviderUnavailableError, type PlanningProviderConfig } from "./service";
 import { readingPlan, planningRequest } from "../../../../../packages/ai/src/fixtures/planning";
 import { planProduct } from "../../../../../packages/ai/src/planning";
+const reservation = randomUUID();
 const id = planningRequest.productId;
 const parent = planningRequest.revisionId;
 const product = { id, name: "Journal", product_type: "journal", current_revision_id: parent };
@@ -14,9 +15,13 @@ function backend(role = "owner") {
   query.range.mockResolvedValue({ data: [legacy], error: null });
   query.maybeSingle.mockResolvedValue({ data: product, error: null });
   const membership = { select: () => ({ eq: () => ({ limit: async () => ({ data: [{ account_id: "account", role }], error: null }) }) }) };
-  return { query, auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user" } }, error: null }) }, from: vi.fn((table: string) => table === "account_memberships" ? membership : query), rpc: vi.fn(async (_name, args) => ({ data: [{ product_id: id, revision_id: args.p_content.revisionId, revision_number: 2 }], error: null })) };
+  return { query, auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user" } }, error: null }) }, from: vi.fn((table: string) => table === "account_memberships" ? membership : query), rpc: vi.fn().mockResolvedValue({ data: reservation, error: null }),
+    persistence: { save: vi.fn(async (_reservation: string, envelope: unknown) => [{ product_id: id, revision_id: (envelope as { revisionId: string }).revisionId, revision_number: 2 }]), release: vi.fn().mockResolvedValue(undefined), close: vi.fn() } };
 }
-function form() { const value = new FormData(); value.set("productId", id); value.set("expectedRevisionId", parent); value.set("idea", "A literary journal"); return value; }
+function generatePlanningRevision(client: ReturnType<typeof backend>, input: FormData, config: PlanningProviderConfig | null) {
+  return generate(client, input, config, client.persistence);
+}
+function form() { const value = new FormData(); value.set("productId", id); value.set("expectedRevisionId", parent); value.set("idea", "A literary journal"); value.set("requestId", randomUUID()); return value; }
 const config = () => ({ provider: { generate: vi.fn().mockResolvedValue(JSON.stringify(readingPlan)) }, generator: { id: "test", version: "1" }, promptVersion: "1" });
 describe("Studio planning", () => {
   it("paginates complete history beyond the server page limit using the captured pointer", async () => {
@@ -58,8 +63,9 @@ describe("Studio planning", () => {
   it("persists a validated, server-identified envelope once", async () => {
     const client = backend(); const result = await generatePlanningRevision(client, form(), config());
     expect(result.kind).toBe("saved"); expect(client.rpc).toHaveBeenCalledTimes(1);
-    const args = client.rpc.mock.calls[0][1]; expect(args.p_content.parentRevisionId).toBe(parent);
-    expect(args.p_content.revisionNumber).toBe(2); expect(args.p_name).toBe(product.name);
+    expect(client.rpc).toHaveBeenCalledWith("reserve_planning_request", expect.objectContaining({ p_product_id: id, p_expected_current_revision_id: parent }));
+    expect(client.persistence.save).toHaveBeenCalledWith(reservation, expect.objectContaining({ parentRevisionId: parent, revisionNumber: 2 }));
+    expect(client.persistence.release).toHaveBeenCalledWith(reservation);
   });
   it("denies nonowners before reads or provider calls", async () => {
     const client = backend("member"); const provider = config();
@@ -86,14 +92,14 @@ describe("Studio planning", () => {
     expect(provider.provider.generate).not.toHaveBeenCalled();
     provider.provider.generate.mockResolvedValue("{}"); expect((await generatePlanningRevision(backend(), form(), provider)).kind).toBe("invalid_output");
   });
-  it.each([["40001", "conflict"], ["42501", "denied"], ["P0002", "missing"], ["22023", "invalid_output"], ["other", "uncertain"]])("maps persistence %s safely", async (code, kind) => {
-    const client = backend(); client.rpc.mockResolvedValue({ data: [], error: { code } } as never);
+  it.each([["40001", "conflict"], ["42501", "reservation_expired"], ["P0002", "missing"], ["22023", "invalid_output"], ["other", "uncertain"]])("maps persistence %s safely", async (code, kind) => {
+    const client = backend(); client.persistence.save.mockRejectedValue({ code });
     expect(await generatePlanningRevision(client, form(), config())).toEqual({ kind }); expect(client.rpc).toHaveBeenCalledTimes(1);
   });
   it("does not retry a thrown or mismatched persistence response", async () => {
-    const client = backend(); client.rpc.mockRejectedValue(new Error("private"));
+    const client = backend(); client.persistence.save.mockRejectedValue(new Error("private"));
     expect(await generatePlanningRevision(client, form(), config())).toEqual({ kind: "uncertain" });
-    client.rpc.mockResolvedValue({ data: [{ product_id: id, revision_id: parent, revision_number: 2 }], error: null });
+    client.persistence.save.mockResolvedValue([{ product_id: id, revision_id: parent, revision_number: 2 }]);
     expect(await generatePlanningRevision(client, form(), config())).toEqual({ kind: "uncertain" });
   });
   it("retains every current page and rejects corrupted history", async () => {
@@ -104,6 +110,11 @@ describe("Studio planning", () => {
     expect(provider.provider.generate.mock.calls[0][0].retainedPageIds).toEqual(readingPlan.manifest.pages.map(page => page.id));
     client.query.range.mockResolvedValue({ data: [{ ...row, content: { ...generated.envelope, revisionId: id } }], error: null });
     expect(await planningHistory(client, id)).toEqual({ kind: "invalid_history" });
+    client.rpc.mockClear(); client.persistence.save.mockClear(); provider.provider.generate.mockClear();
+    expect(await generatePlanningRevision(client, form(), provider)).toEqual({ kind: "invalid_history" });
+    expect(client.rpc).not.toHaveBeenCalled();
+    expect(client.persistence.save).not.toHaveBeenCalled();
+    expect(provider.provider.generate).not.toHaveBeenCalled();
   });
   it.each(["anonymous", "membership", "malformed", "missing", "read", "throw", "empty", "pointer"])("fails closed on %s history", async failure => {
     const client = backend();
@@ -128,6 +139,44 @@ describe("Studio planning", () => {
       const client = backend(); client.query.range.mockResolvedValue({ data: [row], error: null });
       expect(await planningHistory(client, id)).toEqual({ kind: "invalid_history" });
     }
+  });
+
+  it.each([["23505", "duplicate_request"], ["53300", "rate_limited"], ["40001", "conflict"], ["P0002", "missing"], ["42501", "denied"], ["other", "unavailable"]])("blocks generation on admission %s", async (code, kind) => {
+    const client = backend(); const provider = config();
+    client.rpc.mockResolvedValue({ data: null, error: { code } });
+    expect(await generatePlanningRevision(client, form(), provider)).toEqual({ kind });
+    expect(provider.provider.generate).not.toHaveBeenCalled();
+    expect(client.persistence.save).not.toHaveBeenCalled();
+  });
+  it("fails closed before generation on missing persistence or broken admission response", async () => {
+    const client = backend(); const provider = config();
+    expect(await generate(client, form(), provider, null)).toEqual({ kind: "persistence_unavailable" });
+    client.rpc.mockRejectedValueOnce(new Error("private"));
+    expect(await generatePlanningRevision(client, form(), provider)).toEqual({ kind: "unavailable" });
+    client.rpc.mockResolvedValue({ data: "not-a-token", error: null });
+    expect(await generatePlanningRevision(client, form(), provider)).toEqual({ kind: "unavailable" });
+    expect(provider.provider.generate).not.toHaveBeenCalled();
+  });
+  it("requires one well-formed request identity and validates input before admission", async () => {
+    const client = backend(); const provider = config(); const input = form();
+    input.delete("requestId");
+    expect(await generatePlanningRevision(client, input, provider)).toEqual({ kind: "invalid_input" });
+    input.set("requestId", "bad");
+    expect(await generatePlanningRevision(client, input, provider)).toEqual({ kind: "invalid_input" });
+    input.set("requestId", randomUUID()); input.set("idea", " ");
+    expect((await generatePlanningRevision(client, input, provider)).kind).toBe("invalid_input");
+    expect(client.rpc).not.toHaveBeenCalled();
+  });
+  it("releases failed generation and never masks a saved result if release fails", async () => {
+    const client = backend(); const provider = config();
+    provider.provider.generate.mockRejectedValue(new Error("private"));
+    expect((await generatePlanningRevision(client, form(), provider)).kind).toBe("provider_failure");
+    expect(client.persistence.release).toHaveBeenCalledWith(reservation);
+    client.persistence.release.mockRejectedValue(new Error("private"));
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect((await generatePlanningRevision(client, form(), config())).kind).toBe("saved");
+    expect(logged).toHaveBeenCalledWith('{"event":"planning.reservation.release_failed"}');
+    logged.mockRestore();
   });
 
 });

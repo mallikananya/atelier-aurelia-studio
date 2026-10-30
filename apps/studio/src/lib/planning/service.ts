@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { planProduct, type StructuredPlanningProvider } from "../../../../../packages/ai/src/planning";
-import { PlanningEnvelopeV1, type PlanningEnvelope } from "../../../../../packages/contracts/src/planning";
+import { PlanningEnvelopeV1, PlanningRequestV1, type PlanningEnvelope } from "../../../../../packages/contracts/src/planning";
+import type { PlanningPersistence } from "../../../../../packages/workflows/src/planning-persistence";
 import { ownerAccess } from "../auth/access";
 
 export interface PlanningProduct {
@@ -84,49 +85,73 @@ export async function planningHistory(value: unknown, productId: string) {
   } catch { return { kind: "unavailable" } as const; }
 }
 
-export async function generatePlanningRevision(value: unknown, form: FormData, config: PlanningProviderConfig | null) {
+function persistenceFailure(error: unknown) {
+  const code = (error as { code?: string } | null)?.code;
+  const kinds = { "40001": "conflict", "42501": "reservation_expired", "P0002": "missing", "22023": "invalid_output" } as const;
+  return { kind: kinds[code as keyof typeof kinds] ?? "uncertain" } as const;
+}
+
+export async function generatePlanningRevision(value: unknown, form: FormData,
+  config: PlanningProviderConfig | null, persistence: PlanningPersistence | null) {
   // Authenticate before exposing parsing, product existence or provider availability.
   const access = await ownerAccess(value);
   if (access.kind !== "owner") return access;
-  const fields = ["productId", "expectedRevisionId", "idea"] as const;
+  const fields = ["productId", "expectedRevisionId", "idea", "requestId"] as const;
   if (fields.some(key => form.getAll(key).length !== 1 || typeof form.get(key) !== "string")) return { kind: "invalid_input" } as const;
   const productId = form.get("productId") as string;
   const expectedId = form.get("expectedRevisionId") as string;
-  if (!z.uuid().safeParse(productId).success || !z.uuid().safeParse(expectedId).success) return { kind: "invalid_input" } as const;
+  const requestId = form.get("requestId") as string;
+  if (![productId, expectedId, requestId].every(id => z.uuid().safeParse(id).success)) return { kind: "invalid_input" } as const;
   const history = await planningHistory(value, productId);
   if (history.kind !== "ok") return history;
   if (history.product.current_revision_id !== expectedId) return { kind: "conflict" } as const;
   if (!config) return { kind: "provider_unavailable" } as const;
+  if (!persistence) return { kind: "persistence_unavailable" } as const;
   const current = history.revisions[0];
   const revisionId = randomUUID();
-  let providerUnavailable = false;
-  const provider: StructuredPlanningProvider = { generate: async request => {
-    try { return await config.provider.generate(request); }
-    catch (error) { providerUnavailable = error instanceof PlanningProviderUnavailableError; throw error; }
-  } };
-  const planned = await planProduct(provider, {
+  // Reuse CE-01 preflight before consuming a reservation or invoking the provider.
+  const request = PlanningRequestV1.safeParse({
     productId, revisionId, parentRevisionId: expectedId, revisionNumber: current.revision_number + 1,
     idea: form.get("idea"), createdAt: new Date().toISOString(), generator: config.generator, promptVersion: config.promptVersion,
     sources: current.envelope?.provenance.sources ?? [],
     retainedPageIds: current.envelope?.plan.manifest.pages.map(page => page.id) ?? [],
   });
-  if (!planned.ok) {
-    if (providerUnavailable) return { kind: "provider_unavailable" } as const;
-    return { kind: planned.error.code, issues: planned.error.issues } as const;
-  }
+  if (!request.success) return { kind: "invalid_input" } as const;
   const client = value as SupabaseClient;
+  let reservationId: string;
   try {
-    // The RPC is atomic and has no idempotency key. An ambiguous response must never be retried.
-    const { data, error } = await client.rpc("append_product_revision", {
-      p_product_id: productId, p_expected_current_revision_id: expectedId,
-      p_name: history.product.name, p_product_type: history.product.product_type, p_content: planned.envelope,
+    // This authenticated RPC derives the owner from auth.uid(), never a supplied actor ID.
+    const { data, error } = await client.rpc("reserve_planning_request", {
+      p_product_id: productId, p_expected_current_revision_id: expectedId, p_request_key: requestId,
     });
     if (error) {
-      const kinds = { "40001": "conflict", "42501": "denied", "P0002": "missing", "22023": "invalid_output" } as const;
-      return { kind: kinds[error.code as keyof typeof kinds] ?? "uncertain" } as const;
+      const kinds = { "23505": "duplicate_request", "53300": "rate_limited", "40001": "conflict", "42501": "denied", "P0002": "missing" } as const;
+      return { kind: kinds[error.code as keyof typeof kinds] ?? "unavailable" } as const;
     }
+    if (!z.uuid().safeParse(data).success) return { kind: "unavailable" } as const;
+    reservationId = data as string;
+  } catch { return { kind: "unavailable" } as const; }
+  try {
+    let providerUnavailable = false;
+    const provider: StructuredPlanningProvider = { generate: async input => {
+      try { return await config.provider.generate(input); }
+      catch (error) { providerUnavailable = error instanceof PlanningProviderUnavailableError; throw error; }
+    } };
+    const planned = await planProduct(provider, request.data);
+    if (!planned.ok) {
+      if (providerUnavailable) return { kind: "provider_unavailable" } as const;
+      return { kind: planned.error.code, issues: planned.error.issues } as const;
+    }
+    // The dedicated server adapter validates again immediately before private SQL.
+    // An ambiguous response must never be retried automatically.
+    const data = await persistence.save(reservationId, planned.envelope);
     if (data?.length !== 1 || data[0].product_id !== productId || data[0].revision_id !== revisionId
       || data[0].revision_number !== planned.envelope.revisionNumber) return { kind: "uncertain" } as const;
     return { kind: "saved", productId, revisionId } as const;
-  } catch { return { kind: "uncertain" } as const; }
+  } catch (error) { return persistenceFailure(error); }
+  finally {
+    try { await persistence.release(reservationId); }
+    catch { console.error(JSON.stringify({ event: "planning.reservation.release_failed" })); }
+    // If release is unavailable, the database expires the reservation without a scheduler.
+  }
 }
