@@ -39,3 +39,13 @@ it("distinguishes a stopped endpoint or unavailable service from generation fail
   fetcher.mockRejectedValue(new DOMException("timed out", "TimeoutError"));
   await expect(getPlanningProvider(env)!.provider.generate(request)).rejects.not.toBeInstanceOf(PlanningProviderUnavailableError);
 });
+it("supports an explicit fixture mode without network calls or aesthetic routing", async () => {
+  const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
+  const config = getPlanningProvider({ PLANNING_PROVIDER_MODE: "fixture", PLANNING_FIXTURE: "travel" })!;
+  expect(config.generator.id).toBe("fixture-not-ai");
+  const output = JSON.parse(await config.provider.generate(request));
+  expect(output.brief.name).toBe("Departure Club");
+  expect(fetcher).not.toHaveBeenCalled();
+  expect(getPlanningProvider({ PLANNING_PROVIDER_MODE: "invalid", ...env })).toBeNull();
+  expect(getPlanningProvider({ PLANNING_PROVIDER_MODE: "live", ...env })).toBeNull();
+});

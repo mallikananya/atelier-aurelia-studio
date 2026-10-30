@@ -8,6 +8,7 @@ type Revision = {
 function PlanningResult({ envelope }: { envelope: PlanningEnvelope }) {
   const { plan, provenance } = envelope;
   return <>
+    <p>{provenance.generator.id === "fixture-not-ai" ? "Fixture preview — not AI-generated." : provenance.generator.id === "live-chat-completions" ? "Generated through the configured text-model endpoint." : "Generated through the configured planning provider."}</p>
     <h3>Creative brief</h3>
     <dl className="product-metadata">
       {Object.entries(plan.brief).filter(([key]) => key !== "schemaVersion").map(([key, value]) =>

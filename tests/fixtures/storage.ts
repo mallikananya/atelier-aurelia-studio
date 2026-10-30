@@ -124,9 +124,15 @@ export async function completeArtifactFixture() {
 export async function provisionOtherOwnerFixture() {
   const email = 'milestone7-other-owner@example.test';
   const admin = fixtureAdmin();
-  const users = await admin.auth.admin.listUsers();
-  if (users.error) throw new Error('Cannot inspect local fixture users');
-  let user = users.data.users.find((item) => item.email === email);
+  // Repeated non-destructive planning runs can push this existing fixture beyond
+  // the first auth page. Search all pages before attempting to create it again.
+  let user;
+  for (let page = 1; ; page++) {
+    const users = await admin.auth.admin.listUsers({ page, perPage: 100 });
+    if (users.error) throw new Error('Cannot inspect local fixture users');
+    user = users.data.users.find((item) => item.email === email);
+    if (user || users.data.users.length < 100) break;
+  }
   if (!user) {
     const created = await admin.auth.admin.createUser({ email, email_confirm: true });
     if (created.error || !created.data.user) throw new Error('Cannot create local other-owner fixture');

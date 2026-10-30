@@ -568,3 +568,79 @@ to the existing npm scripts; CI remains authoritative. To update the already con
 shared hook, install this tested file at the path returned by `git config --get
 core.hooksPath` (currently `~/.codex/git-hooks/pre-push`). Explicit opt-outs remain
 explicit; missing tools no longer act as implicit opt-outs.
+
+## CE-02.2 Creative Director: live model and fixture setup
+
+The existing `/studio` composer now supports a server-only, OpenAI-compatible text
+model adapter. No new infrastructure or subscription is required. The adapter sends
+the existing Creative Director instructions and a JSON schema derived from CE-01;
+it does not select a product template or aesthetic catalog. Generated pages, purpose,
+audience, visual direction and proposed deliverables appear in revision history.
+Successful generation automatically saves an immutable revision; reload the Studio
+or product details to inspect it again. This plans deliverables; it does not render
+PDFs or images or alter the existing planner build workflow.
+
+1. Keep the existing owner authentication and CE-02.1 dedicated
+   `PLANNING_DATABASE_URL` setup above. Create a product at `/products`, then select
+   it at `/studio` (or open its product details).
+2. For a no-network development preview, set `PLANNING_PROVIDER_MODE=fixture` and
+   `PLANNING_FIXTURE=reading` or `travel` in the ignored server `.env`. Restart Studio
+   with `npm run dev`. The UI and saved provenance explicitly identify canned fixture
+   data, not AI. The owner's input does not change the selected fixture. Use a fresh
+   product when changing fixture because existing page identities must survive.
+3. For live AI, first obtain explicit owner spending authorization. Configure
+   `PLANNING_PROVIDER_MODE=live`, `PLANNING_LIVE_URL` (full chat completions endpoint),
+   `PLANNING_LIVE_API_KEY`, `PLANNING_LIVE_MODEL`, and
+   `PLANNING_LIVE_EXPECTED_REQUEST_COST_USD` (operator estimate including repairs).
+   Only then set `PLANNING_LIVE_ENABLED=true`. Do not put credentials in source,
+   shell history, browser variables, screenshots or logs. Restart Studio.
+4. The chosen endpoint/model must support `messages`, `response_format` with
+   `json_object`, and `max_completion_tokens`, returning
+   `choices[0].message.content` as JSON text. Use an existing compatible service or
+   local model endpoint; this milestone installs neither. HTTPS is required except
+   literal loopback HTTP. Redirects, URL credentials, query strings and fragments
+   are rejected. Model API keys remain server-only.
+5. Set `PLANNING_LIVE_MAX_TOKENS` (256–16000; default 6000) to bound model output and
+   `PLANNING_LIVE_TIMEOUT_MS` (100–30000; default 30000) per attempt. CE-01 permits
+   at most three attempts, including validation repairs. Responses are stream-size
+   bounded; plans still must fit the existing 64 KiB envelope. The displayed cost
+   is an estimate, not an enforced monetary limit; set provider-side spending limits
+   if needed. Invalid or missing config fails closed without a paid request.
+
+The legacy loopback `PLANNING_PROVIDER_URL` transport remains available with mode
+`local` or unset. Live and fixture modes never fall back to it on failure.
+Authentication, same-origin action checks, admission limits, private planning writes,
+revision conflicts and repair budgets continue through the unchanged CE-02.1 service.
+A complete new brief may create a new revision retaining page IDs. Conversational
+refinement using the full prior concept is explicitly deferred to CE-02.3.
+
+### Verification versus live smoke test
+
+`npm run test:unit` and `npm run test:coverage` work without a live provider.
+With the existing local Supabase and dedicated writer configured, run:
+
+```sh
+npm run db:test
+npm run test:workflows
+node tools/run-with-env.mjs node_modules/@playwright/test/cli.js test --config playwright.ce02.config.mts
+```
+
+The browser suite uses the production live adapter with a local chat-completions
+fixture endpoint. It tests French romantic reading and bold retro travel briefs
+through the same Studio action, inspects materially different fixture manifests,
+and reloads their saved revisions. These tests demonstrate integration, not model
+creativity. They never call a paid provider.
+
+**Live-model smoke test (manual, only after credentials AND spending authorization):**
+create two fresh products and submit respectively “Create a French romantic reading
+journal for reflective literary readers, with original page ideas” and “Create a
+bold retro travel journal for expressive independent travelers, with original page
+ideas.” Inspect audience, purpose, visual direction, page contents and deliverables;
+reload both products and compare their persisted concepts/manifests. Confirm live
+model provenance and absence of fixture labels. Record model, date and observed
+result without credentials. Live AI quality remains unverified until this is run.
+
+To verify the compiled server rather than development mode, build with
+`NEXT_PUBLIC_APP_URL=http://127.0.0.1:3102` and the existing server environment loaded,
+then run the same browser command with `CE02_BROWSER_PRODUCTION=1`. The suite uses
+`next start` on port 3102; stop other Studio servers before building/testing.

@@ -1,4 +1,5 @@
 import "server-only";
+import { getLivePlanningProvider } from "./live-provider";
 import { z } from "zod";
 import { PLANNING_MAX_BYTES, PlanningRequestV1 } from "../../../../../packages/contracts/src/planning";
 import type { GenerationRequest } from "../../../../../packages/ai/src/planning";
@@ -9,6 +10,16 @@ import { PlanningProviderUnavailableError, type PlanningProviderConfig } from ".
  * Creative validation and repair remain exclusively in the CE-01 service.
  */
 export function getPlanningProvider(env: Record<string, string | undefined> = process.env): PlanningProviderConfig | null {
+  if (env.PLANNING_PROVIDER_MODE === "live") return getLivePlanningProvider(env);
+  if (env.PLANNING_PROVIDER_MODE === "fixture") {
+    if (!["reading", "travel"].includes(env.PLANNING_FIXTURE ?? "reading")) return null;
+    return { generator: { id: "fixture-not-ai", version: env.PLANNING_FIXTURE ?? "reading" },
+      promptVersion: "fixture/1", provider: { generate: async () => {
+        const fixtures = await import("../../../../../packages/ai/src/fixtures/planning");
+        return JSON.stringify(env.PLANNING_FIXTURE === "travel" ? fixtures.travelPlan : fixtures.readingPlan);
+      } } };
+  }
+  if (env.PLANNING_PROVIDER_MODE && env.PLANNING_PROVIDER_MODE !== "local") return null;
   let endpoint: URL;
   try { endpoint = new URL(env.PLANNING_PROVIDER_URL ?? ""); } catch { return null; }
   if (endpoint.protocol !== "http:" || !["127.0.0.1", "[::1]"].includes(endpoint.hostname)

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { createAuthClient } from "@/lib/auth/server";
 import { listProducts } from "@/lib/products/service";
 import { planningHistory } from "@/lib/planning/service";
-import { PlanningForm } from "../products/planning-form";
+import { PlanningComposer } from "../products/planning-composer";
 import { PlanningResults } from "../products/planning-results";
 
 export default async function StudioPage({ searchParams }: { searchParams: Promise<{ productId?: string }> }) {
@@ -30,7 +30,7 @@ export default async function StudioPage({ searchParams }: { searchParams: Promi
         </form>
         {history?.kind === "ok" && history.product.current_revision_id ? <>
           <section className="composer" aria-label="Product idea composer">
-            <PlanningForm requestId={randomUUID()} key={history.product.id} productId={history.product.id} revisionId={history.product.current_revision_id} />
+            <PlanningComposer requestId={randomUUID()} key={history.product.id} productId={history.product.id} revisionId={history.product.current_revision_id} />
             <p><Link href={`/products/${history.product.id}`}>Open product details and builds</Link></p>
           </section>
           <PlanningResults revisions={history.revisions} currentRevisionId={history.product.current_revision_id} />

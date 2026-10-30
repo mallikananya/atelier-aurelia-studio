@@ -467,3 +467,45 @@ The clean-account legacy Auth/Products browser suite was not run against the
 populated database. No real model, recovery action, scheduler, rendering change,
 marketplace work, or CE-02.2 work was introduced. The unrelated AWS README edits
 remain outside CE-02.1 delivery.
+
+## CE-02.2 — Working Creative Director integration
+
+Implemented on verified CE-02.1 base `22a40dd7e88883de62fc0f7a6c2f42d020222bf8`.
+The owner-facing Studio now connects its existing freeform composer to a server-only
+text-model adapter using the OpenAI-compatible chat completions protocol. It reuses
+the Creative Director instructions and derives the model's JSON schema from CE-01.
+Product structures, visual directions and page manifests are generated from the brief,
+without production branches on aesthetic or product category.
+
+Existing owner authorization, same-origin checks, admission reservations, bounded
+three-attempt validation/repair, revision conflicts, and private immutable persistence
+remain intact. Successful requests automatically save an inspectable revision with
+purpose, audience, visual direction, pages, deliverables and provenance. The Studio
+shows live/fixture/local mode and the configured live cost estimate. Fixtures are
+explicit canned previews with distinct saved provenance; they make no network calls.
+
+Live mode requires explicit operator enablement, endpoint, server-only key, model and
+expected request cost. Transport rejects redirects and unsafe URL forms, bounds each
+attempt to at most 30 seconds, and caps response bytes. Estimates are not billing caps.
+Missing configuration or unavailable providers produce sanitized actionable errors.
+The prompt is traced into the production server build rather than served as a public
+asset. No migrations, infrastructure, subscriptions, rendering or planner redesign
+were needed. The unrelated AWS README changes are excluded.
+
+Verification: unit/regression suite and coverage passed (346 Vitest tests; aggregate
+97.5% lines, 95.17% branches, 95.1% functions); lint, typecheck, production build and
+architecture guardrails passed. All 282 database checks and 15 workflow integration
+tests passed. Seven browser acceptance tests passed in both development and production
+builds, including French romantic reading and bold retro travel through the same
+live-adapter path, reloads, stale conflicts and rejected public-RPC bypass. The
+provider was a local chat-completions fixture double. Eight existing storage and
+planner-workflow browser regressions also passed. Their account fixture now searches
+all auth pages, preserving existing accounts after repeated test runs. Dependency audit: zero
+vulnerabilities. Independent code/security review found no actionable issues.
+
+**Live-model generation has not been demonstrated.** No paid request was authorized
+or initiated. Fixture differences verify integration, not model creativity or quality.
+Exact configuration and a separately labeled manual live smoke test are documented
+in `LOCAL_DEVELOPMENT.md`. Conversational refinement with the full existing concept
+is deferred to CE-02.3. CE-02.2 accepts a complete brief for another revision while
+preserving existing page identities; it does not claim conversational refinement.

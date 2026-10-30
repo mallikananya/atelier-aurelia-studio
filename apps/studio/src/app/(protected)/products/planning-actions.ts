@@ -29,7 +29,7 @@ export async function generatePlanningAction(_previous: PlanningState, form: For
     return { message: "Planning revision saved. Inspect the results and revision history below.", idea, saved: true, requestId };
   }
   const messages: Record<string, string> = {
-    provider_unavailable: "The planning provider is unavailable. Configure or start the local provider and try again.",
+    provider_unavailable: "The planning provider is unavailable. Ask the operator to check provider configuration, authorization, credentials, model availability and timeout, then try again.",
     persistence_unavailable: "Planning persistence is unavailable. Ask the operator to configure the dedicated planning database connection.",
     duplicate_request: "This planning request was already submitted. Inspect revision history before submitting another request.",
     rate_limited: "The planning request limit has been reached. Wait for active planning to finish or try again after ten minutes.",

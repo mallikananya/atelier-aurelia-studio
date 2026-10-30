@@ -1,14 +1,15 @@
 import { createServer, type Server } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { test, expect, type Page } from '@playwright/test';
-import { readingPlan } from '../../packages/ai/src/fixtures/planning';
+import { readingPlan, travelPlan } from '../../packages/ai/src/fixtures/planning';
 import { planProduct } from '../../packages/ai/src/planning';
 import { fixtureSession, fixtureToken } from '../fixtures/storage';
 import { provisionPlanningOwner } from '../fixtures/planning';
 
 test.skip(process.env.CE02_BROWSER_TEST !== '1', 'Run with playwright.ce02.config.mts and its isolated local provider.');
 
-// This suite uses its own local HTTP provider and never calls a paid service.
+// Production live-adapter path with a local chat-completions test double.
+// These are fixture acceptance tests, not evidence of live AI generation; no paid requests.
 let provider: Server;
 let ownerEmail: string;
 test.beforeAll(async () => {
@@ -16,16 +17,26 @@ test.beforeAll(async () => {
   provider = createServer(async (request, response) => {
     let body = '';
     for await (const chunk of request) body += chunk;
-    const { idea } = JSON.parse(body) as { idea: string };
+    const payload = JSON.parse(body) as { model: string; messages: { role: string; content: string }[] };
+    const idea = payload.messages.filter(message => message.role === 'user').map(message => message.content).join('\n');
+    if (request.url !== '/v1/chat/completions' || payload.model !== 'ce022-test-model'
+      || request.headers.authorization !== 'Bearer local-fixture-not-a-secret') {
+      response.writeHead(400).end();
+      return;
+    }
+    const complete = (plan: unknown) => response.end(JSON.stringify({
+      choices: [{ message: { role: 'assistant', content: JSON.stringify(plan) }, finish_reason: 'stop' }],
+    }));
     response.setHeader('content-type', 'application/json');
     if (idea.includes('fixture-provider-failure')) {
       response.writeHead(500).end(JSON.stringify({ error: 'private provider detail' }));
     } else if (idea.includes('fixture-provider-unavailable')) {
       response.writeHead(503).end(JSON.stringify({ error: 'private service detail' }));
     } else if (idea.includes('fixture-invalid-output')) {
-      response.end(JSON.stringify({ schemaVersion: 'invalid-provider-output' }));
+      complete({ schemaVersion: 'invalid-provider-output' });
     } else {
-      response.end(JSON.stringify(readingPlan));
+      // Category selection belongs only to this test double, never production code.
+      complete(idea.includes('Bold retro travel journal') ? travelPlan : readingPlan);
     }
   });
   await new Promise<void>((resolve, reject) => {
@@ -146,3 +157,32 @@ test('authenticated clients cannot bypass planning validation through the public
   expect(audit.error).toBeNull();
   expect(audit.data).toHaveLength(0);
 });
+
+for (const scenario of [
+  { idea: 'French romantic reading journal for reflective literary readers, with original page contents.', plan: readingPlan },
+  { idea: 'Bold retro travel journal for expressive independent travelers, with original page contents.', plan: travelPlan },
+]) {
+  test(`fixture acceptance through live adapter: ${scenario.idea}`, async ({ page }) => {
+    const { owner, productId } = await product(page);
+    await page.goto(`/studio?productId=${productId}`);
+    await page.getByLabel('Product planning idea').fill(scenario.idea);
+    await page.getByRole('button', { name: 'Generate planning revision', exact: true }).click();
+    await expect(page.getByRole('status')).toContainText('saved');
+    await expect(page.getByText(scenario.plan.brief.name, { exact: true }).first()).toBeVisible();
+    await expect(page.getByText(scenario.plan.brief.jobToBeDone, { exact: true }).first()).toBeVisible();
+    await expect(page.getByText(scenario.plan.brief.customer, { exact: true }).first()).toBeVisible();
+    await expect(page.getByText(scenario.plan.brief.visualDirection, { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole('heading', { name: `Pages (${scenario.plan.manifest.targetPageCount})` })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Deliverables', exact: true })).toBeVisible();
+    const saved = await revisions(owner, productId);
+    expect(saved).toHaveLength(2);
+    expect(saved[1].content.plan).toEqual(scenario.plan);
+    expect(saved[1].content.provenance.idea).toBe(scenario.idea);
+    await page.reload();
+    await expect(page.getByText(scenario.plan.brief.name, { exact: true }).first()).toBeVisible();
+    for (const manifestPage of scenario.plan.manifest.pages) {
+      await expect(page.getByText(manifestPage.id, { exact: true }).first()).toBeVisible();
+    }
+    expect(await revisions(owner, productId)).toEqual(saved);
+  });
+}
