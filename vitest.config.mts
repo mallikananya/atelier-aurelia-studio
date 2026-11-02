@@ -9,6 +9,8 @@ export default defineConfig({
       include: [
         "packages/contracts/src/phase1.ts",
         "packages/contracts/src/planning.ts",
+        "packages/contracts/src/design.ts",
+        "packages/ai/src/design.ts",
         "packages/ai/src/planning.ts",
         "packages/core/src/jobs.ts",
         "packages/workflows/src/**/*.ts",

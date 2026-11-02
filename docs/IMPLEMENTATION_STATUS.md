@@ -509,3 +509,35 @@ Exact configuration and a separately labeled manual live smoke test are document
 in `LOCAL_DEVELOPMENT.md`. Conversational refinement with the full existing concept
 is deferred to CE-02.3. CE-02.2 accepts a complete brief for another revision while
 preserving existing page identities; it does not claim conversational refinement.
+
+### CE-03A — Open-ended declarative page specifications
+
+Implemented additive versioned design input/output schemas and a pure,
+provider-independent resolver. Explicit compositions resolve VisualDNA palette
+and typography bindings into concrete point-based pages, using text, images,
+rectangle/ellipse shapes and structured vector paths. Stable IDs, original
+planning provenance, page/element dependencies and asset edges survive resolution.
+Existing CE-01/CE-02 contracts and revision persistence are unchanged.
+
+French romantic reading-journal and retro travel-journal fixtures exercise the
+same general-purpose compiler. Focused behavioral tests cover both full-plan
+resolutions, determinism/input isolation, reference and geometry rejection,
+strict properties, graph cycles/collisions, Unicode, JSON budgets and output
+metadata consistency. The new code is included in the normal coverage gate.
+
+Scope remains specifications only: no full renderer, generated assets, live model
+calls, Etsy integration or infrastructure changes. Fixture asset hashes are
+placeholders, not verified existing assets. Visual quality and text fit remain
+unvalidated until rendering exists. Next: local single-page SVG/PNG proof rendering
+and inspection using these contracts, before PDF/package integration.
+
+Dependency security verification reports 16 accepted moderate development-tooling
+findings propagated from `minimatch` through ESLint, TypeScript ESLint and the Next.js
+ESLint plugins ([GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249)).
+The production dependency audit (`npm audit --omit=dev`) reports zero vulnerabilities.
+No compatible patch/minor parent release currently adopts the fixed `minimatch`
+11.0.1+ API. A forced override would break the callable CommonJS API expected by
+existing ESLint plugins; npm's proposed historical major downgrades are also unsafe.
+The owner accepted this as temporary security debt. Dependency manifests and the
+lockfile remain unchanged. Revisit it as a separate maintenance task when upstream
+packages publish compatible fixes; do not suppress the full-audit findings.

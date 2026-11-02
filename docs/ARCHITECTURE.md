@@ -267,3 +267,58 @@ Existing immutable history is unchanged. Invalid ancestors still block planning 
 are surfaced explicitly. Recovery is a manual, owner-reviewed replacement-product
 procedure described in LOCAL_DEVELOPMENT.md; there is no automatic repair, skipped
 ancestor, pointer rewind, or recovery write in CE-02.1.
+
+## CE-03A — Declarative page design boundary
+
+`packages/contracts/src/design.ts` adds `design-request/1` and
+`resolved-design/1` without extending the legacy ProductSpec/PageSpec or CE-02
+planning envelope. `packages/ai/src/design.ts::resolveDesign` is a pure compiler:
+validated planning envelope + explicit page compositions + typography bindings +
+asset declarations → validated concrete pages. There are no provider calls,
+product/aesthetic switches, storage writes, or free-text-to-layout heuristics.
+VisualDNA palette references resolve to colors; its other creative directions
+remain preserved intent. A later layout author/provider must supply the explicit
+composition and font choices. Fixtures are acceptance data only.
+
+Contract semantics:
+
+- All page geometry, text metrics, padding and stroke widths use points (1/72 in),
+  with origin at top left and positive x/y pointing right/down. Width/height are
+  positive, finite and bounded. No bleed, rotation or implicit responsive layout
+  is supported in this version; unsupported properties are rejected.
+- Text, image, rectangle/ellipse and vector path are the reusable primitives.
+  Roles such as headings, ornaments, writing areas or dividers are data. Compound
+  objects (tables, grids, icons, frames) can be authored as multiple stable-ID
+  primitives; this slice does not introduce product-specific templates.
+- Vector commands are structured move/line/cubic-curve/close operations. All
+  coordinates and control points are normalized to the element box (0–1).
+  Paths start with move. Rendering semantics are nonzero fill, centered strokes,
+  round joins/caps; the page-bound check includes half the stroke width.
+- Colors are explicit RGB/RGBA hex literals or VisualDNA palette-key references.
+  Opacity multiplies paint alpha. Typography resolves to an immutable font asset
+  ID, font size, line height, letter spacing and alignment. Text is plain text,
+  with whitespace/newlines preserved; padding insets every edge. Text shaping,
+  wrapping, glyph support and actual text overflow require a renderer.
+- Images use declared asset IDs, contain/cover fit (centered; cover clipped to
+  the element box), and alt text. Font/image declarations carry SHA-256 identities
+  and known inspiration source IDs; no paths/URLs or asset bytes are accepted.
+  Asset availability, authorization, hashes and font licensing are not verified
+  by this pure resolver and must be checked at the later asset-loading boundary.
+- Elements paint in ascending layer order, with authored order breaking ties.
+  Every manifest page must have exactly one composition in manifest order.
+  Page/element/asset IDs are preserved and cannot collide with brief/deliverable
+  nodes. Unknown references and cyclic element dependencies fail validation.
+- Output retains the complete original planning envelope and provenance, page
+  metadata/source/page dependency IDs, element dependency IDs, concrete font/image
+  references, and derived page asset IDs. Pages conservatively depend on the
+  retained VisualDNA as a whole. Token-level invalidation and execution of selective
+  repair are deferred. Resolving never mutates the caller's objects or a revision.
+- Both new documents have a 2 MiB JSON budget and bounded collections. Errors
+  return bounded codes and redacted paths, never partial output or provider text.
+  They are separate artifacts, not content to append to the existing 64 KiB
+  planning revision. Persistence/job/UI integration is a later milestone.
+
+These contracts implement PRD §§5.4, 6, 7 and the dependency groundwork of §8.
+Schema-valid geometry is not evidence of final visual quality. The smallest next
+slice is a local single-page SVG/PNG proof renderer for this exact primitive
+contract, with asset verification, text-fit checks and inspected fixture renders.
