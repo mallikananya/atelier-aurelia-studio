@@ -644,3 +644,44 @@ To verify the compiled server rather than development mode, build with
 `NEXT_PUBLIC_APP_URL=http://127.0.0.1:3102` and the existing server environment loaded,
 then run the same browser command with `CE02_BROWSER_PRODUCTION=1`. The suite uses
 `next start` on port 3102; stop other Studio servers before building/testing.
+
+### CE-03B local single-page design proofs
+
+Run `npm run design:preview` with Node 22.18+ after `npm ci`. This requires no
+provider credentials, database, cloud service, or running Studio. It resolves the
+existing CE-03A reading and travel fixtures, binds checked-in licensed font and
+original illustration bytes to their asset IDs with real SHA-256 values, and
+renders the first page of each without changing its composition or persistence.
+Fixture font/art provenance and licenses are in `tests/fixtures/render-assets/`.
+
+Inspect `output/ce-03b/contact-sheet.png`, `reading-cover.svg`, `reading-cover.png`,
+`travel-route.svg`, and `travel-route.png`. Each page also has a JSON sidecar with
+the complete resolved fixture, renderer metadata, and element-linked findings.
+These generated files remain ignored by Git. The command exits nonzero for text
+findings; it throws actionable errors for absent, changed, or unsupported assets.
+Re-running intentionally replaces these disposable local proof files.
+
+The general-purpose `renderPage(resolvedDesign, pageId, assetBytesById)` API in
+`packages/renderer/src/index.ts` accepts the existing `resolved-design/1` contract.
+It reads no paths, fetches no URLs, and makes no persistence changes. Only selected
+page assets are required. SVG metadata retains source provenance, product/revision
+IDs, page/element dependencies, asset hashes, and a resolved-input hash. Text is
+outlined from verified fonts, eliminating host font substitution. PNG is derived
+from that same self-contained SVG. Identical inputs produce identical bytes with
+the pinned dependencies/platform; byte identity across future native rasterizer
+versions or platforms is not promised.
+
+Proof limitations: 72 dpi PNG (one pixel per point), at most 20 million page/image
+pixels, 20 MiB per asset and 20,000 text characters per page. Greedy word wrapping
+preserves spaces and explicit line breaks; overlong words are reported rather than
+shrunk or clipped. Text ink and line extents are checked against padded element
+bounds and the page. Text outside the page is reported but cannot appear on the PNG
+canvas. Supported assets are single outline fonts and static PNG/JPEG/WebP images.
+Missing glyphs, unsupported fonts/images, justified text, and bidirectional text
+fail explicitly. This is not a complete multilingual typography engine or a
+print-ready export pipeline. Font axis controls, multi-page PDF, packaging, listing
+media, and UI integration remain outside CE-03B.
+
+Automated verification establishes rendering behavior, not aesthetic acceptance.
+The owner must inspect the contact sheet and individual proofs before approving
+visual quality. These are fixture demonstrations, not live AI-generated designs.

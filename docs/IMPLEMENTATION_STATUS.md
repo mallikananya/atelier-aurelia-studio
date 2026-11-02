@@ -541,3 +541,31 @@ existing ESLint plugins; npm's proposed historical major downgrades are also uns
 The owner accepted this as temporary security debt. Dependency manifests and the
 lockfile remain unchanged. Revisit it as a separate maintenance task when upstream
 packages publish compatible fixes; do not suppress the full-audit findings.
+
+### CE-03B — Local single-page SVG/PNG proof renderer
+
+Added a provider-independent local renderer for the existing resolved-design/1
+contract. It uses deterministic outlined typography, authored geometry, stable
+layer ordering, shapes, normalized vectors, and verified local image placements.
+SHA-256 asset checks, explicit unsupported-asset errors, bounded word wrapping,
+and element-linked text/page overflow findings prevent silent substitution or
+shrinking. SVG metadata and JSON proof sidecars retain lineage and dependencies;
+existing database and persistence contracts are unchanged.
+
+The local `npm run design:preview` workflow renders the first existing reading and
+travel fixture pages with real, checked-in licensed fonts and original artwork,
+and creates a PNG contact sheet under ignored `output/ce-03b/`. Fixture layouts
+remain data; production code contains no aesthetic-specific branches. No paid
+services, live generation, PDF, marketplace, mockup, or infrastructure work is
+included. See LOCAL_DEVELOPMENT.md for API, limits, assets, and inspection steps.
+
+Owner aesthetic acceptance remains pending inspection of the generated proofs.
+
+Verification: 388 Vitest tests and repository/workspace Node tests passed; coverage
+gates passed (aggregate 98.66% lines, 95.49% branches, 95.98% functions; renderer
+100% lines/functions and 95.23% branches). Lint, typecheck, architecture guardrails,
+and the production build using the existing local environment loader passed.
+Both fixture proofs have zero text-fit findings; repeated generation is byte
+stable in the verified environment. Independent review prompted stronger draw-order
+and overlapping-pixel layer tests. Production audit reports zero vulnerabilities;
+the previously accepted 16 moderate development-tooling advisories are unchanged.

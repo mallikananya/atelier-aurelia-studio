@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="320" viewBox="0 0 320 320">
+  <defs>
+    <clipPath id="disc"><circle cx="160" cy="160" r="146"/></clipPath>
+  </defs>
+  <g clip-path="url(#disc)">
+    <path fill="#F2E5C7" d="M0 0H320V320H0Z"/>
+    <circle cx="207" cy="96" r="53" fill="#C44C32"/>
+    <path fill="#234A64" d="M-10 220L86 83L166 194L219 132L335 239V330H-10Z"/>
+    <path fill="#F2E5C7" d="M53 130L86 83L119 129L93 116L83 129L72 117Z"/>
+    <path fill="#F2E5C7" d="M191 165L219 132L254 164L229 155L218 167L209 155Z"/>
+    <path fill="#C44C32" d="M-10 240L74 181L146 233L200 201L330 252V330H-10Z"/>
+    <path fill="#F2E5C7" d="M141 330C237 281 248 268 205 253C163 238 98 239 104 220C108 209 137 204 160 197C137 210 121 213 123 220C127 230 197 229 230 248C282 278 242 308 217 330Z"/>
+    <path fill="none" stroke="#234A64" stroke-width="3" stroke-dasharray="9 8" d="M178 326C249 284 251 270 217 255C187 242 128 239 118 224"/>
+    <g fill="#234A64">
+      <path d="M32 240L50 199L68 240H57L73 259H27L43 240Z"/>
+      <path d="M267 234L281 202L295 234H287L300 251H262L275 234Z"/>
+    </g>
+    <g fill="#F2E5C7">
+      <path d="M26 75H112V80H26ZM13 91H59V96H13ZM247 109H310V114H247Z"/>
+    </g>
+  </g>
+  <circle cx="160" cy="160" r="146" fill="none" stroke="#234A64" stroke-width="4"/>
+</svg>

@@ -1,0 +1,1 @@
+{"name":"@atelier-aurelia/renderer","private":true,"type":"module","scripts":{"build":"tsc -p tsconfig.json","typecheck":"tsc --noEmit","lint":"eslint src"},"dependencies":{"fontkit":"^2.0.4","sharp":"^0.35.5"},"devDependencies":{"@types/fontkit":"^2.0.8","typescript":"^5.9.0"}}

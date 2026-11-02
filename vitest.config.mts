@@ -11,6 +11,7 @@ export default defineConfig({
         "packages/contracts/src/planning.ts",
         "packages/contracts/src/design.ts",
         "packages/ai/src/design.ts",
+        "packages/renderer/src/**/*.ts",
         "packages/ai/src/planning.ts",
         "packages/core/src/jobs.ts",
         "packages/workflows/src/**/*.ts",
