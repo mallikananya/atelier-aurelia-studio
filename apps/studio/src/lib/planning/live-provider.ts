@@ -15,9 +15,15 @@ const Settings = z.object({
 });
 type SettingsValue = z.infer<typeof Settings>;
 
+function isLocalOllama(endpoint: URL): boolean {
+  return endpoint.protocol === "http:" && ["127.0.0.1", "[::1]"].includes(endpoint.hostname)
+    && endpoint.port === "11434" && endpoint.pathname === "/v1/chat/completions";
+}
+
 /** Explicit enablement is an operator spending authorization. Expected cost is an
  * operator estimate per full request (including repair), not a billing cap.
- * JSON mode maximizes compatibility; CE-01 remains the validation authority.
+ * JSON mode maximizes compatibility; local Ollama uses constrained schema output.
+ * CE-01 remains the validation authority, including cross-reference refinements.
  */
 export function getLivePlanningProvider(env: Record<string, string | undefined> = process.env): PlanningProviderConfig | null {
   if (env.PLANNING_LIVE_ENABLED !== "true" || !env.PLANNING_LIVE_EXPECTED_REQUEST_COST_USD?.trim()) return null;
@@ -25,7 +31,11 @@ export function getLivePlanningProvider(env: Record<string, string | undefined> 
   try { endpoint = new URL(env.PLANNING_LIVE_URL ?? ""); } catch { return null; }
   const loopback = endpoint.protocol === "http:" && ["127.0.0.1", "[::1]"].includes(endpoint.hostname);
   if ((!loopback && endpoint.protocol !== "https:") || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) return null;
-  const settings = Settings.safeParse({ key: env.PLANNING_LIVE_API_KEY, model: env.PLANNING_LIVE_MODEL,
+  // Local Ollama may need longer to load and generate; other providers retain
+  // the existing bound, and all providers retain the 30-second default.
+  const localOllama = isLocalOllama(endpoint);
+  const settingsSchema = localOllama ? Settings.extend({ timeout: z.coerce.number().int().min(100).max(300_000) }) : Settings;
+  const settings = settingsSchema.safeParse({ key: env.PLANNING_LIVE_API_KEY, model: env.PLANNING_LIVE_MODEL,
     expectedCost: env.PLANNING_LIVE_EXPECTED_REQUEST_COST_USD, timeout: env.PLANNING_LIVE_TIMEOUT_MS ?? 30_000,
     maxTokens: env.PLANNING_LIVE_MAX_TOKENS ?? 6000 });
   if (!settings.success) return null;
@@ -80,7 +90,11 @@ async function readBounded(response: Response, signal: AbortSignal): Promise<str
 async function generate(endpoint: URL, settings: SettingsValue, request: GenerationRequest): Promise<string> {
   try {
     const body = JSON.stringify({ model: settings.model, messages: await messages(request),
-      response_format: { type: "json_object" }, max_completion_tokens: settings.maxTokens });
+      response_format: isLocalOllama(endpoint)
+        ? { type: "json_schema", json_schema: { name: "creative_plan", strict: true,
+          schema: z.toJSONSchema(CreativePlanV1, { unrepresentable: "any" }) } }
+        : { type: "json_object" },
+      ...(isLocalOllama(endpoint) ? { max_tokens: settings.maxTokens } : { max_completion_tokens: settings.maxTokens }) });
     const signal = AbortSignal.timeout(settings.timeout);
     const response = await fetch(endpoint.href, { method: "POST", redirect: "error", cache: "no-store", signal,
       headers: { "content-type": "application/json", authorization: `Bearer ${settings.key}` }, body });

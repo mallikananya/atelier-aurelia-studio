@@ -5,6 +5,25 @@ import { PlanningProviderUnavailableError } from "./service";
 const env = { PLANNING_LIVE_ENABLED: "true", PLANNING_LIVE_URL: "https://model.example/v1/chat/completions", PLANNING_LIVE_API_KEY: "test-secret", PLANNING_LIVE_MODEL: "test-model", PLANNING_LIVE_EXPECTED_REQUEST_COST_USD: "0.05" };
 const request = { idea: "An original journal", sources: [], retainedPageIds: [], schemaVersion: "creative-plan/1" as const, attempt: 1, issues: [] };
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); vi.restoreAllMocks(); });
+it.each(["127.0.0.1", "[::1]"])("allows an explicit five-minute timeout for local Ollama at %s", async host => {
+  const timeout = vi.spyOn(AbortSignal, "timeout");
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response('{"choices":[{"message":{"content":"{}"}}]}')));
+  const config = getLivePlanningProvider({ ...env, PLANNING_LIVE_URL: `http://${host}:11434/v1/chat/completions`, PLANNING_LIVE_TIMEOUT_MS: "300000" });
+  expect(config).not.toBeNull();
+  await config!.provider.generate(request);
+  expect(timeout).toHaveBeenCalledWith(300_000);
+});
+it("preserves default and unrelated provider timeout limits", async () => {
+  const url = "http://127.0.0.1:11434/v1/chat/completions";
+  expect(getLivePlanningProvider({ ...env, PLANNING_LIVE_URL: url, PLANNING_LIVE_TIMEOUT_MS: "300001" })).toBeNull();
+  for (const endpoint of [env.PLANNING_LIVE_URL, "http://127.0.0.1:8080/v1/chat/completions", "http://127.0.0.1:11434/other", "https://127.0.0.1:11434/v1/chat/completions", "http://localhost:11434/v1/chat/completions"]) {
+    expect(getLivePlanningProvider({ ...env, PLANNING_LIVE_URL: endpoint, PLANNING_LIVE_TIMEOUT_MS: "300000" })).toBeNull();
+  }
+  const timeout = vi.spyOn(AbortSignal, "timeout");
+  vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(new Response('{"choices":[{"message":{"content":"{}"}}]}'))));
+  for (const endpoint of [url, env.PLANNING_LIVE_URL]) await getLivePlanningProvider({ ...env, PLANNING_LIVE_URL: endpoint })!.provider.generate(request);
+  expect(timeout.mock.calls).toEqual([[30_000], [30_000]]);
+});
 it("fails closed without explicit authorization and complete bounded configuration", () => {
   expect(getLivePlanningProvider({})).toBeNull();
   for (const patch of [{ PLANNING_LIVE_ENABLED: "false" }, { PLANNING_LIVE_API_KEY: "" }, { PLANNING_LIVE_MODEL: "" }, { PLANNING_LIVE_EXPECTED_REQUEST_COST_USD: "NaN" }, { PLANNING_LIVE_TIMEOUT_MS: "60001" }, { PLANNING_LIVE_MAX_TOKENS: "100000" }]) expect(getLivePlanningProvider({ ...env, ...patch })).toBeNull();
@@ -24,6 +43,16 @@ it("uses existing instructions and contract, keeps credentials out of messages, 
   expect(body.messages[0].content).toContain("creative-plan/1");
   expect(body.messages[1].content).toContain('"previousOutput":"{}"');
   expect(options.body).not.toContain("test-secret");
+});
+it.each(["127.0.0.1", "[::1]"])("uses Ollama's supported max_tokens limit for local %s", async host => {
+  const fetcher = vi.fn().mockResolvedValue(new Response('{"choices":[{"message":{"content":"{}"}}]}'));
+  vi.stubGlobal("fetch", fetcher);
+  await getLivePlanningProvider({ ...env, PLANNING_LIVE_URL: `http://${host}:11434/v1/chat/completions`, PLANNING_LIVE_MAX_TOKENS: "700" })!.provider.generate(request);
+  const body = JSON.parse(fetcher.mock.calls[0][1].body);
+  expect(body.max_tokens).toBe(700);
+  expect(body.response_format).toMatchObject({ type: "json_schema", json_schema: { name: "creative_plan", strict: true,
+    schema: { type: "object", additionalProperties: false, required: ["schemaVersion", "brief", "visualDNA", "manifest", "deliverables"] } } });
+  expect(body).not.toHaveProperty("max_completion_tokens");
 });
 it.each([new Response("secret", { status: 401 }), new Response("secret", { status: 429 }), new Response(null), new Response("not json"), new Response('{"choices":[]}'), new Response("x".repeat(262145))])("sanitizes unavailable, malformed and oversized responses", async response => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
