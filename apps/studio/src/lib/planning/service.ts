@@ -4,6 +4,7 @@ import { z } from "zod";
 import { planProduct, type StructuredPlanningProvider } from "../../../../../packages/ai/src/planning";
 import { PlanningEnvelopeV1, PlanningRequestV1, type PlanningEnvelope } from "../../../../../packages/contracts/src/planning";
 import type { PlanningPersistence } from "../../../../../packages/workflows/src/planning-persistence";
+import { startPlanningLease } from "./lease";
 import { ownerAccess } from "../auth/access";
 
 export interface PlanningProduct {
@@ -119,10 +120,11 @@ export async function generatePlanningRevision(value: unknown, form: FormData,
   if (!request.success) return { kind: "invalid_input" } as const;
   const client = value as SupabaseClient;
   let reservationId: string;
+  const holderToken = randomUUID();
   try {
     // This authenticated RPC derives the owner from auth.uid(), never a supplied actor ID.
     const { data, error } = await client.rpc("reserve_planning_request", {
-      p_product_id: productId, p_expected_current_revision_id: expectedId, p_request_key: requestId,
+      p_product_id: productId, p_expected_current_revision_id: expectedId, p_request_key: requestId, p_holder_token: holderToken,
     });
     if (error) {
       const kinds = { "23505": "duplicate_request", "53300": "rate_limited", "40001": "conflict", "42501": "denied", "P0002": "missing" } as const;
@@ -131,26 +133,32 @@ export async function generatePlanningRevision(value: unknown, form: FormData,
     if (!z.uuid().safeParse(data).success) return { kind: "unavailable" } as const;
     reservationId = data as string;
   } catch { return { kind: "unavailable" } as const; }
+  const lease = { reservationId, holderToken };
+  let controller: Awaited<ReturnType<typeof startPlanningLease>> | undefined;
   try {
+    controller = await startPlanningLease(persistence, lease);
     let providerUnavailable = false;
-    const provider: StructuredPlanningProvider = { generate: async input => {
-      try { return await config.provider.generate(input); }
+    const provider: StructuredPlanningProvider = { generate: async (input, signal) => {
+      controller!.check();
+      try { return await config.provider.generate(input, signal); }
       catch (error) { providerUnavailable = error instanceof PlanningProviderUnavailableError; throw error; }
     } };
-    const planned = await planProduct(provider, request.data);
+    const planned = await planProduct(provider, request.data, controller.signal);
+    controller.check();
     if (!planned.ok) {
       if (providerUnavailable) return { kind: "provider_unavailable" } as const;
       return { kind: planned.error.code, issues: planned.error.issues } as const;
     }
     // The dedicated server adapter validates again immediately before private SQL.
     // An ambiguous response must never be retried automatically.
-    const data = await persistence.save(reservationId, planned.envelope);
+    const data = await controller.save(planned.envelope);
     if (data?.length !== 1 || data[0].product_id !== productId || data[0].revision_id !== revisionId
       || data[0].revision_number !== planned.envelope.revisionNumber) return { kind: "uncertain" } as const;
     return { kind: "saved", productId, revisionId } as const;
   } catch (error) { return persistenceFailure(error); }
   finally {
-    try { await persistence.release(reservationId); }
+    await controller?.stop();
+    try { await persistence.release(lease); }
     catch { console.error(JSON.stringify({ event: "planning.reservation.release_failed" })); }
     // If release is unavailable, the database expires the reservation without a scheduler.
   }

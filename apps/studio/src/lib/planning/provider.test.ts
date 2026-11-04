@@ -49,3 +49,38 @@ it("supports an explicit fixture mode without network calls or aesthetic routing
   expect(getPlanningProvider({ PLANNING_PROVIDER_MODE: "invalid", ...env })).toBeNull();
   expect(getPlanningProvider({ PLANNING_PROVIDER_MODE: "live", ...env })).toBeNull();
 });
+
+it('cancels a stalled body when the planning lease is lost', async () => {
+  const controller = new AbortController();
+  const cancelled = vi.fn();
+  let opened!: () => void;
+  const bodyStarted = new Promise<void>(resolve => { opened = resolve; });
+  vi.stubGlobal('fetch', vi.fn(async (_url, options) => {
+    expect(options.signal).toBeInstanceOf(AbortSignal);
+    expect(options.body).not.toContain('signal');
+    return new Response(new ReadableStream({ pull() { opened(); }, cancel: cancelled }, { highWaterMark: 0 }));
+  }));
+  const pending = getPlanningProvider(env)!.provider.generate(request, controller.signal);
+  const rejection = expect(pending).rejects.toThrow();
+  await bodyStarted;
+  controller.abort(new Error('private lease detail'));
+  await rejection;
+  expect(cancelled).toHaveBeenCalledTimes(1);
+});
+it('cancels waiting for headers even if a transport ignores cancellation', async () => {
+  const controller = new AbortController();
+  let started!: () => void;
+  const fetched = new Promise<void>(resolve => { started = resolve; });
+  vi.stubGlobal('fetch', vi.fn(() => { started(); return new Promise(() => {}); }));
+  const pending = getPlanningProvider(env)!.provider.generate(request, controller.signal);
+  const rejection = expect(pending).rejects.toThrow();
+  await fetched;
+  controller.abort();
+  await rejection;
+});
+it('does not start transport after cancellation', async () => {
+  const fetcher = vi.fn();
+  vi.stubGlobal('fetch', fetcher);
+  await expect(getPlanningProvider(env)!.provider.generate(request, AbortSignal.abort())).rejects.toThrow();
+  expect(fetcher).not.toHaveBeenCalled();
+});

@@ -1,3 +1,5 @@
+import { planProduct } from '../../packages/ai/src/planning';
+import { planningRequest, readingPlan } from '../../packages/ai/src/fixtures/planning';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { expect, it } from 'vitest';
@@ -19,13 +21,17 @@ async function fixture(count = 1) {
 }
 
 type Fixture = Awaited<ReturnType<typeof fixture>>;
-function reserve(owner: Fixture['owner'], product: Fixture['products'][number], key = randomUUID()) {
-  return owner.rpc('reserve_planning_request', {
-    p_product_id: product.product_id, p_expected_current_revision_id: product.revision_id, p_request_key: key,
+const holders = new Map<string, string>();
+async function reserve(owner: Fixture['owner'], product: Fixture['products'][number], key = randomUUID()) {
+  const holder = randomUUID();
+  const result = await owner.rpc('reserve_planning_request', {
+    p_product_id: product.product_id, p_expected_current_revision_id: product.revision_id, p_request_key: key, p_holder_token: holder,
   });
+  if (!result.error) holders.set(result.data as string, holder);
+  return result;
 }
 function release(id: string) {
-  planningFixtureSQL(`set role atelier_planning_writer; select private.release_planning_request(${literal(id)});`);
+  planningFixtureSQL(`set role atelier_planning_writer; select private.release_planning_request(${literal(id)},${literal(holders.get(id)!)});`);
 }
 
 it.each([false, true])('atomically admits one concurrent request per product (duplicate identity=%s)', async duplicate => {
@@ -86,7 +92,7 @@ it('rejects a reservation that expires while its writer waits for the product lo
     locker.input.write(`begin; select id from public.products where id=${literal(product.product_id)} for update; select 'product_locked';\n`);
     await waitFor(() => locker.output().includes('product_locked'));
     writer.input.end(`set application_name='ce021-expiry-${product.product_id}'; set role atelier_planning_writer;
-      select * from private.append_planning_revision(${reservation}, '{}'::jsonb);\n`);
+      select * from private.append_planning_revision(${reservation}, ${literal(holders.get(admitted.data as string)!)}, '{}'::jsonb);\n`);
     await waitFor(() => planningFixtureSQL(`select count(*) from pg_stat_activity where application_name='ce021-expiry-${product.product_id}' and wait_event_type='Lock';`) === '1');
     await waitFor(() => planningFixtureSQL(`select expires_at<=clock_timestamp() from private.planning_requests where id=${reservation};`) === 't');
     locker.input.end('commit;\n');
@@ -124,3 +130,134 @@ async function waitFor(check: () => boolean) {
     await new Promise(resolve => setTimeout(resolve, 25));
   }
 }
+
+async function envelopeFor(product: Fixture['products'][number]) {
+  const result = await planProduct({ generate: async () => JSON.stringify(readingPlan) }, {
+    ...planningRequest, productId: product.product_id, parentRevisionId: product.revision_id,
+    revisionId: randomUUID(), revisionNumber: 2,
+  });
+  if (!result.ok) throw new Error('Controlled planning fixture failed validation');
+  return result.envelope;
+}
+function renewSQL(id: string) {
+  return `select * from private.renew_planning_request(${literal(id)},${literal(holders.get(id)!)});`;
+}
+async function assertUnchanged(owner: Fixture['owner'], product: Fixture['products'][number], id: string) {
+  expect((await owner.from('product_revisions').select('id').eq('product_id', product.product_id)).data).toHaveLength(1);
+  expect((await owner.from('products').select('current_revision_id').eq('id', product.product_id).single()).data?.current_revision_id).toBe(product.revision_id);
+  expect((await owner.from('audit_events').select('id').eq('product_id', product.product_id).eq('action', 'product.revision_created')).data).toEqual([]);
+  expect(planningFixtureSQL(`select completed_at is null from private.planning_requests where id=${literal(id)};`)).toBe('t');
+}
+
+it.each(['product', 'membership'])('rejects renewal after expiry waiting for the %s lock', async resource => {
+  const { owner, products: [product] } = await fixture();
+  const admitted = await reserve(owner, product); expect(admitted.error).toBeNull();
+  const id = admitted.data as string;
+  planningFixtureSQL(`update private.planning_requests set expires_at=clock_timestamp()+interval '3 seconds' where id=${literal(id)};`);
+  const locker = databaseSession(), renewer = databaseSession();
+  try {
+    const target = resource === 'product' ? `public.products where id=${literal(product.product_id)}`
+      : `public.account_memberships where account_id=(select account_id from public.products where id=${literal(product.product_id)})`;
+    locker.input.write(`begin; select 1 from ${target} for update; select 'locked';\n`);
+    await waitFor(() => locker.output().includes('locked'));
+    renewer.input.end(`set application_name='renew-${id}'; set role atelier_planning_writer; ${renewSQL(id)}\n`);
+    await waitFor(() => planningFixtureSQL(`select count(*) from pg_stat_activity where application_name='renew-${id}' and wait_event_type='Lock';`) === '1');
+    await waitFor(() => planningFixtureSQL(`select expires_at<=clock_timestamp() from private.planning_requests where id=${literal(id)};`) === 't');
+    locker.input.end('commit;\n'); await locker.done;
+    expect(await renewer.done).not.toBe(0); expect(renewer.errors()).toContain('42501');
+    await assertUnchanged(owner, product, id);
+  } finally {
+    if (!locker.input.writableEnded) locker.input.end('rollback;\n');
+    locker.kill(); renewer.kill(); await Promise.all([locker.done, renewer.done]);
+  }
+});
+
+it('rolls back revision, pointer, audit and completion when commit is delayed past expiry', async () => {
+  const { owner, products: [product] } = await fixture();
+  const envelope = await envelopeFor(product);
+  const admitted = await reserve(owner, product); expect(admitted.error).toBeNull();
+  const id = admitted.data as string;
+  planningFixtureSQL(`update private.planning_requests set expires_at=clock_timestamp()+interval '3 seconds' where id=${literal(id)};`);
+  const writer = databaseSession();
+  try {
+    writer.input.write(`begin; set role atelier_planning_writer;
+      select * from private.append_planning_revision(${literal(id)},${literal(holders.get(id)!)},${literal(JSON.stringify(envelope))}::jsonb);
+      select 'append_returned';\n`);
+    await waitFor(() => writer.output().includes('append_returned'));
+    await waitFor(() => planningFixtureSQL(`select expires_at<=clock_timestamp() from private.planning_requests where id=${literal(id)};`) === 't');
+    writer.input.end('commit;\n');
+    expect(await writer.done).not.toBe(0); expect(writer.errors()).toContain('42501');
+    await assertUnchanged(owner, product, id);
+  } finally { writer.kill(); await writer.done; }
+});
+
+it('serializes renewal behind save and rejects renewal of the completed reservation', async () => {
+  const { owner, products: [product] } = await fixture();
+  const envelope = await envelopeFor(product);
+  const admitted = await reserve(owner, product); expect(admitted.error).toBeNull();
+  const id = admitted.data as string;
+  const writer = databaseSession(), renewer = databaseSession();
+  try {
+    writer.input.write(`begin; set role atelier_planning_writer;
+      select * from private.append_planning_revision(${literal(id)},${literal(holders.get(id)!)},${literal(JSON.stringify(envelope))}::jsonb);
+      select 'append_returned';\n`);
+    await waitFor(() => writer.output().includes('append_returned'));
+    renewer.input.end(`set application_name='save-renew-${id}'; set role atelier_planning_writer; ${renewSQL(id)}\n`);
+    await waitFor(() => planningFixtureSQL(`select count(*) from pg_stat_activity where application_name='save-renew-${id}' and wait_event_type='Lock';`) === '1');
+    writer.input.end('commit;\n'); expect(await writer.done).toBe(0);
+    expect(await renewer.done).not.toBe(0); expect(renewer.errors()).toContain('42501');
+    expect((await owner.from('product_revisions').select('id').eq('product_id', product.product_id)).data).toHaveLength(2);
+    expect((await owner.from('products').select('current_revision_id').eq('id', product.product_id).single()).data?.current_revision_id).toBe(envelope.revisionId);
+  } finally {
+    if (!writer.input.writableEnded) writer.input.end('rollback;\n');
+    writer.kill(); renewer.kill(); await Promise.all([writer.done, renewer.done]);
+  }
+});
+
+it.each(['revoked', 'stale'])('rejects renewal when owner/revision becomes %s', async reason => {
+  const { owner, products: [product] } = await fixture();
+  const admitted = await reserve(owner, product); expect(admitted.error).toBeNull();
+  const id = admitted.data as string;
+  if (reason === 'revoked') {
+    planningFixtureSQL(`update public.account_memberships set role='member' where account_id=(select account_id from public.products where id=${literal(product.product_id)});`);
+  } else {
+    const envelope = await envelopeFor(product);
+    planningFixtureSQL(`set role atelier_planning_writer; select * from private.append_planning_revision(${literal(id)},${literal(holders.get(id)!)},${literal(JSON.stringify(envelope))}::jsonb);`);
+    // A separate freshly inserted historical fixture exercises revision fencing without changing immutable identity.
+    const actual = randomUUID(), holder = randomUUID();
+    planningFixtureSQL(`insert into private.planning_requests(id,owner_id,product_id,expected_revision_id,request_key,holder_token_hash,created_at,expires_at,hard_deadline)
+      select ${literal(actual)},owner_id,product_id,expected_revision_id,${literal(randomUUID())},extensions.digest(${literal(holder)},'sha256'),clock_timestamp(),clock_timestamp()+interval '120 seconds',clock_timestamp()+interval '17 minutes'
+      from private.planning_requests where id=${literal(id)} returning id;`);
+    holders.set(actual, holder);
+    const check = databaseSession(); check.input.end(`set role atelier_planning_writer; ${renewSQL(actual)}\n`);
+    expect(await check.done).not.toBe(0); expect(check.errors()).toContain('40001');
+    return;
+  }
+  const check = databaseSession(); check.input.end(`set role atelier_planning_writer; ${renewSQL(id)}\n`);
+  expect(await check.done).not.toBe(0); expect(check.errors()).toContain('P0002');
+});
+
+it('rejects renewal when the immutable hard deadline expires while waiting for a lock', async () => {
+  const { owner, products: [product] } = await fixture();
+  const admitted = await reserve(owner, product); expect(admitted.error).toBeNull();
+  const seed = admitted.data as string; release(seed);
+  const id = randomUUID(), holder = randomUUID(); holders.set(id, holder);
+  planningFixtureSQL(`insert into private.planning_requests(id,owner_id,product_id,expected_revision_id,request_key,holder_token_hash,created_at,expires_at,hard_deadline)
+    select ${literal(id)},owner_id,product_id,expected_revision_id,${literal(randomUUID())},extensions.digest(${literal(holder)},'sha256'),
+      statement_timestamp()-interval '17 minutes'+interval '3 seconds',statement_timestamp()+interval '3 seconds',statement_timestamp()+interval '3 seconds'
+    from private.planning_requests where id=${literal(seed)};`);
+  const locker = databaseSession(), renewer = databaseSession();
+  try {
+    locker.input.write(`begin; select id from public.products where id=${literal(product.product_id)} for update; select 'locked';\n`);
+    await waitFor(() => locker.output().includes('locked'));
+    renewer.input.end(`set application_name='deadline-${id}'; set role atelier_planning_writer; ${renewSQL(id)}\n`);
+    await waitFor(() => planningFixtureSQL(`select count(*) from pg_stat_activity where application_name='deadline-${id}' and wait_event_type='Lock';`) === '1');
+    await waitFor(() => planningFixtureSQL(`select hard_deadline<=clock_timestamp() from private.planning_requests where id=${literal(id)};`) === 't');
+    locker.input.end('commit;\n'); await locker.done;
+    expect(await renewer.done).not.toBe(0); expect(renewer.errors()).toContain('42501');
+    await assertUnchanged(owner, product, id);
+  } finally {
+    if (!locker.input.writableEnded) locker.input.end('rollback;\n');
+    locker.kill(); renewer.kill(); await Promise.all([locker.done, renewer.done]);
+  }
+});

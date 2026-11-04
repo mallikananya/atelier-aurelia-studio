@@ -51,7 +51,7 @@ begin
     return query select * from public.append_product_revision($1,$2,$3,$4,$5);
     return;
   end if;
-  token := public.reserve_planning_request($1,$2,gen_random_uuid()::text);
+  token := public.reserve_planning_request($1,$2,gen_random_uuid()::text,'73000000-0000-4000-8000-000000000001');
   return query select * from private.append_planning_revision(token,$5);
 end $$;
 set local role authenticated;

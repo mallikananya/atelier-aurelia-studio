@@ -93,3 +93,31 @@ describe('planning trust boundaries', () => {
     expect(first.ok && second.ok && first.envelope.provenance.inputSha256 !== second.envelope.provenance.inputSha256).toBe(true);
   });
 });
+
+
+describe('planning cancellation', () => {
+  it('does not start generation for an aborted request', async () => {
+    const provider = providerFor(readingPlan);
+    const result = await planProduct(provider, planningRequest, AbortSignal.abort(new Error('private')));
+    expect(result).toMatchObject({ ok: false, error: { code: 'provider_failure', attempts: 0 } });
+    expect(provider.generate).not.toHaveBeenCalled();
+  });
+  it('settles promptly for a noncooperative provider and ignores late invalid output', async () => {
+    const controller = new AbortController();
+    let finish!: (output: string) => void;
+    const generate = vi.fn(() => new Promise<string>(resolve => { finish = resolve; }));
+    const pending = planProduct({ generate }, planningRequest, controller.signal);
+    controller.abort(new Error('private'));
+    expect(await pending).toMatchObject({ ok: false, error: { code: 'provider_failure', attempts: 1 } });
+    finish('{');
+    await Promise.resolve();
+    expect(generate).toHaveBeenCalledTimes(1);
+    expect(generate.mock.calls[0]).toEqual([expect.not.objectContaining({ signal: expect.anything() }), controller.signal]);
+  });
+  it('does not accept valid output or repair after cancellation inside generation', async () => {
+    const controller = new AbortController();
+    const generate = vi.fn(async () => { controller.abort(); return JSON.stringify(readingPlan); });
+    expect(await planProduct({ generate }, planningRequest, controller.signal)).toMatchObject({ ok: false });
+    expect(generate).toHaveBeenCalledTimes(1);
+  });
+});

@@ -4,7 +4,7 @@ import { planProduct } from '../../ai/src/planning.ts';
 import { readingPlan, planningRequest } from '../../ai/src/fixtures/planning.ts';
 import { createPlanningPersistence, planningDatabaseConfig, PostgresPlanningPersistence } from './planning-persistence.ts';
 
-const reservation = '50000000-0000-4000-8000-000000000001';
+const reservation = { reservationId: '50000000-0000-4000-8000-000000000001', holderToken: '50000000-0000-4000-8000-000000000002' };
 function setup() {
   const client = { query: vi.fn().mockResolvedValue({ rows: [] }), release: vi.fn() };
   const pool = { connect: vi.fn().mockResolvedValue(client), end: vi.fn().mockResolvedValue(undefined) };
@@ -21,8 +21,8 @@ describe('trusted planning persistence', () => {
     for (const content of [{}, { schemaVersion: 'planning-envelope/1' }, { ...await envelope(), plan: {} }]) {
       await expect(persistence.save(reservation, content)).rejects.toMatchObject({ code: '22023' });
     }
-    await expect(persistence.save('invalid', await envelope())).rejects.toMatchObject({ code: '22023' });
-    await expect(persistence.release('invalid')).rejects.toMatchObject({ code: '22023' });
+    await expect(persistence.save({ ...reservation, holderToken: 'invalid' }, await envelope())).rejects.toMatchObject({ code: '22023' });
+    await expect(persistence.release({ ...reservation, reservationId: 'invalid' })).rejects.toMatchObject({ code: '22023' });
     expect(pool.connect).not.toHaveBeenCalled();
   });
   it('rejects semantic planning defects at the trusted boundary without any SQL', async () => {
@@ -53,7 +53,7 @@ describe('trusted planning persistence', () => {
     expect(await persistence.save(reservation, content)).toEqual(rows);
     expect(client.query.mock.calls).toEqual([
       ['begin'], ['set local role atelier_planning_writer'],
-      ['select * from private.append_planning_revision($1::uuid,$2::jsonb)', [reservation, JSON.stringify(content)]], ['commit'],
+      ['select * from private.append_planning_revision($1::uuid,$2::uuid,$3::jsonb)', [reservation.reservationId, reservation.holderToken, JSON.stringify(content)]], ['commit'],
     ]);
     expect(client.release).toHaveBeenCalledOnce();
   });
@@ -75,7 +75,7 @@ describe('trusted planning persistence', () => {
   it('releases only the reservation and closes its pool', async () => {
     const { client, pool, persistence } = setup();
     await persistence.release(reservation);
-    expect(client.query.mock.calls[2]).toEqual(['select private.release_planning_request($1::uuid)', [reservation]]);
+    expect(client.query.mock.calls[2]).toEqual(['select private.release_planning_request($1::uuid,$2::uuid)', [reservation.reservationId, reservation.holderToken]]);
     await persistence.close();
     expect(pool.end).toHaveBeenCalledOnce();
   });
@@ -138,4 +138,15 @@ it('rejects connection overrides in URL query parameters', () => {
 it('rejects duplicate TLS parameters rather than validating a different value than pg', () => {
   expect(() => planningDatabaseConfig({ PLANNING_DATABASE_URL:
     'postgresql://planner:secret@remote/db?sslmode=verify-full&sslmode=disable' })).toThrow('overrides');
+});
+
+it('renews only holder-scoped reservations and validates returned deadlines', async () => {
+  const { client, persistence } = setup();
+  client.query.mockResolvedValue({ rows: [{ server_now: '2026-11-03T00:00:00Z', expires_at: '2026-11-03T00:02:00Z', hard_deadline: '2026-11-03T00:17:00Z' }] });
+  expect(await persistence.renew(reservation)).toEqual({ serverNow: '2026-11-03T00:00:00.000Z', expiresAt: '2026-11-03T00:02:00.000Z', hardDeadline: '2026-11-03T00:17:00.000Z' });
+  expect(client.query.mock.calls[2]).toEqual(['select * from private.renew_planning_request($1::uuid,$2::uuid)', [reservation.reservationId, reservation.holderToken]]);
+  client.query.mockResolvedValue({ rows: [{ expires_at: 'bad', hard_deadline: 'bad' }] });
+  await expect(persistence.renew(reservation)).rejects.toMatchObject({ code: '22023' });
+  client.query.mockResolvedValue({ rows: [] });
+  await expect(persistence.renew(reservation)).rejects.toMatchObject({ code: '22023' });
 });

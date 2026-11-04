@@ -21,6 +21,7 @@ export default defineConfig({
         "apps/studio/src/lib/products/download-response.ts",
         "apps/studio/src/lib/products/service.ts",
         "apps/studio/src/lib/planning/service.ts",
+        "apps/studio/src/lib/planning/lease.ts",
         "apps/studio/src/lib/planning/provider.ts",
         "apps/studio/src/lib/planning/live-provider.ts",
         "apps/studio/src/lib/planning/persistence.ts",

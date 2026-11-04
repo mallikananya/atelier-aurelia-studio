@@ -2,7 +2,7 @@ import "server-only";
 import { getLivePlanningProvider } from "./live-provider";
 import { z } from "zod";
 import { PLANNING_MAX_BYTES, PlanningRequestV1 } from "../../../../../packages/contracts/src/planning";
-import type { GenerationRequest } from "../../../../../packages/ai/src/planning";
+import { awaitPlanningOperation, type GenerationRequest } from "../../../../../packages/ai/src/planning";
 import { PlanningProviderUnavailableError, type PlanningProviderConfig } from "./service";
 
 /** Optional local transport. The endpoint implements GenerationRequest -> raw plan JSON.
@@ -14,8 +14,10 @@ export function getPlanningProvider(env: Record<string, string | undefined> = pr
   if (env.PLANNING_PROVIDER_MODE === "fixture") {
     if (!["reading", "travel"].includes(env.PLANNING_FIXTURE ?? "reading")) return null;
     return { generator: { id: "fixture-not-ai", version: env.PLANNING_FIXTURE ?? "reading" },
-      promptVersion: "fixture/1", provider: { generate: async () => {
+      promptVersion: "fixture/1", provider: { generate: async (_request, signal) => {
+        signal?.throwIfAborted();
         const fixtures = await import("../../../../../packages/ai/src/fixtures/planning");
+        signal?.throwIfAborted();
         return JSON.stringify(env.PLANNING_FIXTURE === "travel" ? fixtures.travelPlan : fixtures.readingPlan);
       } } };
   }
@@ -29,17 +31,23 @@ export function getPlanningProvider(env: Record<string, string | undefined> = pr
     promptVersion: env.PLANNING_PROMPT_VERSION,
   });
   if (!metadata.success) return null;
-  return { ...metadata.data, provider: { generate: request => generate(endpoint, request) } };
+  return { ...metadata.data, provider: { generate: (request, signal) => generate(endpoint, request, signal) } };
 }
 
-async function generate(endpoint: URL, request: GenerationRequest): Promise<string> {
-  const response = await fetch(endpoint.href, { method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify(request), signal: AbortSignal.timeout(30_000), redirect: "error", cache: "no-store" })
+async function generate(endpoint: URL, request: GenerationRequest, externalSignal?: AbortSignal): Promise<string> {
+  const timeout = AbortSignal.timeout(30_000);
+  const signal = externalSignal ? AbortSignal.any([externalSignal, timeout]) : timeout;
+  signal.throwIfAborted();
+  const response = await awaitPlanningOperation(fetch(endpoint.href, { method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify(request), signal, redirect: "error", cache: "no-store" })
     .catch((error: unknown) => {
       const code = (error as { cause?: { code?: string } })?.cause?.code;
       if (code && ["ECONNREFUSED", "ENETUNREACH", "EHOSTUNREACH"].includes(code)) throw new PlanningProviderUnavailableError();
       throw error;
-    });
+    }).then(response => {
+      if (signal.aborted) { void response.body?.cancel().catch(() => {}); signal.throwIfAborted(); }
+      return response;
+    }), signal);
   if ([404, 429, 503].includes(response.status)) {
     await response.body?.cancel();
     throw new PlanningProviderUnavailableError();
@@ -52,9 +60,13 @@ async function generate(endpoint: URL, request: GenerationRequest): Promise<stri
   const decoder = new TextDecoder("utf-8", { fatal: true });
   let size = 0;
   let output = "";
+  const cancel = () => { void reader.cancel().catch(() => {}); };
+  signal.addEventListener("abort", cancel, { once: true });
   try {
     while (true) {
+      signal.throwIfAborted();
       const chunk = await reader.read();
+      signal.throwIfAborted();
       if (chunk.done) break;
       size += chunk.value.byteLength;
       // Keep the stream bounded, but let CE-01 classify oversize as invalid output
@@ -63,5 +75,5 @@ async function generate(endpoint: URL, request: GenerationRequest): Promise<stri
       output += decoder.decode(chunk.value, { stream: true });
     }
     return output + decoder.decode();
-  } finally { await reader.cancel(); reader.releaseLock(); }
+  } finally { signal.removeEventListener("abort", cancel); void reader.cancel().catch(() => {}); reader.releaseLock(); }
 }

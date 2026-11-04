@@ -16,7 +16,7 @@ export interface GenerationRequest {
 }
 /** Adapter returns JSON text, never trusted domain objects. No provider SDK required. */
 export interface StructuredPlanningProvider {
-  generate(request: GenerationRequest): Promise<string>;
+  generate(request: GenerationRequest, signal?: AbortSignal): Promise<string>;
 }
 export type PlanningResult = { ok: true; envelope: PlanningEnvelope } | {
   ok: false; error: { code: 'invalid_input' | 'provider_failure' | 'invalid_output'; attempts: number; issues: PlanningIssue[] };
@@ -32,7 +32,23 @@ function diagnostics(issues: readonly { path: readonly PropertyKey[]; code: stri
   }));
 }
 
-export async function planProduct(provider: StructuredPlanningProvider, value: unknown): Promise<PlanningResult> {
+/** Settles cancellation even when an adapter ignores it; attaches rejection handlers
+ * to late completion and always removes its listener. Cancellation cannot guarantee
+ * that a remote inference engine stops computing. */
+export function awaitPlanningOperation<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return operation;
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => { signal.removeEventListener('abort', abort); reject(new Error('Planning cancelled')); };
+    signal.addEventListener('abort', abort, { once: true });
+    operation.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+    if (signal.aborted) {
+      signal.removeEventListener('abort', abort);
+      abort();
+    }
+  });
+}
+
+export async function planProduct(provider: StructuredPlanningProvider, value: unknown, signal?: AbortSignal): Promise<PlanningResult> {
   const parsed = PlanningRequestV1.safeParse(value);
   if (!parsed.success) return { ok: false, error: { code: 'invalid_input', attempts: 0, issues: diagnostics(parsed.error.issues) } };
   const request = parsed.data;
@@ -41,10 +57,12 @@ export async function planProduct(provider: StructuredPlanningProvider, value: u
   let issues: PlanningIssue[] = [];
   let previousOutput: string | undefined;
   for (let attempt = 1; attempt <= PLANNING_MAX_ATTEMPTS; attempt++) {
+    if (signal?.aborted) return { ok: false, error: { code: 'provider_failure', attempts: attempt - 1, issues: [] } };
     let output: string;
     try {
-      output = await provider.generate(structuredClone({ idea, sources, retainedPageIds,
-        schemaVersion: 'creative-plan/1', attempt, issues, previousOutput }));
+      output = await awaitPlanningOperation(provider.generate(structuredClone({ idea, sources, retainedPageIds,
+        schemaVersion: 'creative-plan/1', attempt, issues, previousOutput }), signal), signal);
+      signal?.throwIfAborted();
     } catch {
       return { ok: false, error: { code: 'provider_failure', attempts: attempt, issues: [] } };
     }

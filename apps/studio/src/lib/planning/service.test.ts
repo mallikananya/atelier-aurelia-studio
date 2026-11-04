@@ -1,14 +1,16 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { planningHistory, generatePlanningRevision as generate, PlanningProviderUnavailableError, type PlanningProviderConfig } from "./service";
 import { readingPlan, planningRequest } from "../../../../../packages/ai/src/fixtures/planning";
 import { planProduct } from "../../../../../packages/ai/src/planning";
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 const reservation = randomUUID();
 const id = planningRequest.productId;
 const parent = planningRequest.revisionId;
 const product = { id, name: "Journal", product_type: "journal", current_revision_id: parent };
 const legacy = { id: parent, product_id: id, parent_revision_id: null, revision_number: 1, schema_version: "phase1.1", content: {}, name: "Journal", content_sha256: "a".repeat(64), created_at: planningRequest.createdAt };
 function backend(role = "owner") {
+  const hardDeadline = new Date(Date.now() + 1_020_000).toISOString();
   const query = { select: vi.fn(), eq: vi.fn(), order: vi.fn(), range: vi.fn(), maybeSingle: vi.fn() };
   query.select.mockReturnValue(query); query.eq.mockReturnValue(query);
   query.order.mockReturnValue(query);
@@ -16,7 +18,7 @@ function backend(role = "owner") {
   query.maybeSingle.mockResolvedValue({ data: product, error: null });
   const membership = { select: () => ({ eq: () => ({ limit: async () => ({ data: [{ account_id: "account", role }], error: null }) }) }) };
   return { query, auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user" } }, error: null }) }, from: vi.fn((table: string) => table === "account_memberships" ? membership : query), rpc: vi.fn().mockResolvedValue({ data: reservation, error: null }),
-    persistence: { save: vi.fn(async (_reservation: string, envelope: unknown) => [{ product_id: id, revision_id: (envelope as { revisionId: string }).revisionId, revision_number: 2 }]), release: vi.fn().mockResolvedValue(undefined), close: vi.fn() } };
+    persistence: { renew: vi.fn(async () => ({ serverNow: new Date().toISOString(), expiresAt: new Date(Date.now() + 120_000).toISOString(), hardDeadline })), save: vi.fn(async (_reservation: { reservationId: string; holderToken: string }, envelope: unknown) => [{ product_id: id, revision_id: (envelope as { revisionId: string }).revisionId, revision_number: 2 }]), release: vi.fn().mockResolvedValue(undefined), close: vi.fn() } };
 }
 function generatePlanningRevision(client: ReturnType<typeof backend>, input: FormData, config: PlanningProviderConfig | null) {
   return generate(client, input, config, client.persistence);
@@ -64,8 +66,8 @@ describe("Studio planning", () => {
     const client = backend(); const result = await generatePlanningRevision(client, form(), config());
     expect(result.kind).toBe("saved"); expect(client.rpc).toHaveBeenCalledTimes(1);
     expect(client.rpc).toHaveBeenCalledWith("reserve_planning_request", expect.objectContaining({ p_product_id: id, p_expected_current_revision_id: parent }));
-    expect(client.persistence.save).toHaveBeenCalledWith(reservation, expect.objectContaining({ parentRevisionId: parent, revisionNumber: 2 }));
-    expect(client.persistence.release).toHaveBeenCalledWith(reservation);
+    expect(client.persistence.save).toHaveBeenCalledWith(expect.objectContaining({ reservationId: reservation }), expect.objectContaining({ parentRevisionId: parent, revisionNumber: 2 }));
+    expect(client.persistence.release).toHaveBeenCalledWith(expect.objectContaining({ reservationId: reservation }));
   });
   it("denies nonowners before reads or provider calls", async () => {
     const client = backend("member"); const provider = config();
@@ -171,7 +173,7 @@ describe("Studio planning", () => {
     const client = backend(); const provider = config();
     provider.provider.generate.mockRejectedValue(new Error("private"));
     expect((await generatePlanningRevision(client, form(), provider)).kind).toBe("provider_failure");
-    expect(client.persistence.release).toHaveBeenCalledWith(reservation);
+    expect(client.persistence.release).toHaveBeenCalledWith(expect.objectContaining({ reservationId: reservation }));
     client.persistence.release.mockRejectedValue(new Error("private"));
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     expect((await generatePlanningRevision(client, form(), config())).kind).toBe("saved");
@@ -180,3 +182,34 @@ describe("Studio planning", () => {
   });
 
 });
+
+ it("renews during three long attempts and binds server-generated holder credentials", async () => {
+  vi.useFakeTimers();
+  const client = backend(); const deadline = new Date(Date.now() + 1_020_000).toISOString();
+  client.persistence.renew.mockImplementation(async () => ({ serverNow: new Date().toISOString(), expiresAt: new Date(Date.now() + 120_000).toISOString(), hardDeadline: deadline }));
+  let attempt = 0;
+  const provider: PlanningProviderConfig = { ...config(), provider: { generate: async () => {
+    await new Promise(resolve => setTimeout(resolve, 299_000));
+    return ++attempt < 3 ? "{}" : JSON.stringify(readingPlan);
+  } } };
+  const pending = generatePlanningRevision(client, form(), provider);
+  await vi.advanceTimersByTimeAsync(897_000);
+  expect((await pending).kind).toBe("saved");
+  expect(attempt).toBe(3);
+  expect(client.persistence.renew.mock.calls.length).toBeGreaterThan(25);
+  const token = client.rpc.mock.calls[0][1].p_holder_token;
+  expect(token).toMatch(/^[0-9a-f-]{36}$/);
+  expect(client.persistence.save).toHaveBeenCalledWith({ reservationId: reservation, holderToken: token }, expect.anything());
+  expect(vi.getTimerCount()).toBe(0);
+ });
+ it("cancels uncooperative inference on lease loss without repair or save", async () => {
+  vi.useFakeTimers(); const client = backend(); const generateModel = vi.fn(async () => new Promise<string>(() => {}));
+  client.persistence.renew.mockRejectedValueOnce(Object.assign(new Error("lost"), {code:"42501"}));
+  const first = await generatePlanningRevision(client, form(), {...config(), provider:{generate:generateModel}});
+  expect(first.kind).toBe("reservation_expired"); expect(generateModel).not.toHaveBeenCalled();
+  client.persistence.renew.mockReset().mockResolvedValueOnce({serverNow:new Date().toISOString(),expiresAt:new Date(Date.now()+120_000).toISOString(),hardDeadline:new Date(Date.now()+1_020_000).toISOString()}).mockRejectedValue(Object.assign(new Error("lost"),{code:"42501"}));
+  const pending = generatePlanningRevision(client, form(), {...config(),provider:{generate:generateModel}});
+  await vi.advanceTimersByTimeAsync(30_000);
+  expect((await pending).kind).toBe("reservation_expired");
+  expect(generateModel).toHaveBeenCalledTimes(1); expect(client.persistence.save).not.toHaveBeenCalled(); expect(vi.getTimerCount()).toBe(0);
+ });

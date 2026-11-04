@@ -16,6 +16,7 @@ async function migrationSource() {
     "202610270001_planner_pdf.sql",
     "202610280001_ce02_planning_revisions.sql",
     "202610290001_ce021_planning_security.sql",
+    "202611030001_planning_lease_renewal.sql",
   ]);
   return Promise.all(migrations.map((file) => readFile(path.join(migrationsDirectory, file), "utf8")))
     .then((sources) => sources.join("\n"));

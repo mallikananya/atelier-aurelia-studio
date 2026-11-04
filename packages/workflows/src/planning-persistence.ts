@@ -7,9 +7,12 @@ export interface PlanningRevisionRow {
   revision_id: string;
   revision_number: number;
 }
+export interface PlanningLease { reservationId: string; holderToken: string }
+export interface PlanningLeaseDeadline { expiresAt: string; hardDeadline: string; serverNow: string }
 export interface PlanningPersistence {
-  save(reservationId: string, envelope: unknown): Promise<PlanningRevisionRow[]>;
-  release(reservationId: string): Promise<void>;
+  renew(lease: PlanningLease): Promise<PlanningLeaseDeadline>;
+  save(lease: PlanningLease, envelope: unknown): Promise<PlanningRevisionRow[]>;
+  release(lease: PlanningLease): Promise<void>;
   close(): Promise<void>;
 }
 export class PlanningPersistenceValidationError extends Error {
@@ -17,8 +20,8 @@ export class PlanningPersistenceValidationError extends Error {
   constructor() { super('Invalid planning persistence input'); }
 }
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-function reservationIdentity(value: string): void {
-  if (!uuid.test(value)) throw new PlanningPersistenceValidationError();
+function reservationIdentity(value: PlanningLease): void {
+  if (!value || !uuid.test(value.reservationId) || !uuid.test(value.holderToken)) throw new PlanningPersistenceValidationError();
 }
 
 export function planningDatabaseConfig(env: NodeJS.ProcessEnv): PoolConfig {
@@ -47,7 +50,7 @@ export function planningDatabaseConfig(env: NodeJS.ProcessEnv): PoolConfig {
   if (!local && url.searchParams.get('sslmode') !== 'verify-full') {
     throw new Error('Remote planning connections require sslmode=verify-full');
   }
-  return { connectionString, max: 3, connectionTimeoutMillis: 10_000, statement_timeout: 30_000,
+  return { connectionString, max: 3, connectionTimeoutMillis: 10_000, statement_timeout: 30_000, query_timeout: 35_000,
     idleTimeoutMillis: 10_000, application_name: 'atelier-planning-writer' };
 }
 export function createPlanningPersistence(env: NodeJS.ProcessEnv = process.env): PlanningPersistence {
@@ -76,17 +79,29 @@ export class PostgresPlanningPersistence implements PlanningPersistence {
       else client.release();
     }
   }
-  async save(reservationId: string, envelope: unknown): Promise<PlanningRevisionRow[]> {
-    reservationIdentity(reservationId);
+  async renew(lease: PlanningLease): Promise<PlanningLeaseDeadline> {
+    reservationIdentity(lease);
+    const rows = await this.query<{ expires_at: string | Date; hard_deadline: string | Date; server_now: string | Date }>(
+      'select * from private.renew_planning_request($1::uuid,$2::uuid)', [lease.reservationId, lease.holderToken]);
+    const expires = rows.length === 1 ? new Date(rows[0].expires_at).getTime() : NaN;
+    const deadline = rows.length === 1 ? new Date(rows[0].hard_deadline).getTime() : NaN;
+    const serverNow = rows.length === 1 ? new Date(rows[0].server_now).getTime() : NaN;
+    if (!Number.isFinite(serverNow) || !Number.isFinite(expires) || !Number.isFinite(deadline) || expires > deadline) {
+      throw new PlanningPersistenceValidationError();
+    }
+    return { expiresAt: new Date(expires).toISOString(), hardDeadline: new Date(deadline).toISOString(), serverNow: new Date(serverNow).toISOString() };
+  }
+  async save(lease: PlanningLease, envelope: unknown): Promise<PlanningRevisionRow[]> {
+    reservationIdentity(lease);
     // Parse immediately before SQL and serialize the validated snapshot, not the caller's object.
     const validated = PlanningEnvelopeV1.safeParse(envelope);
     if (!validated.success) throw new PlanningPersistenceValidationError();
-    return this.query('select * from private.append_planning_revision($1::uuid,$2::jsonb)',
-      [reservationId, JSON.stringify(validated.data)]);
+    return this.query('select * from private.append_planning_revision($1::uuid,$2::uuid,$3::jsonb)',
+      [lease.reservationId, lease.holderToken, JSON.stringify(validated.data)]);
   }
-  async release(reservationId: string): Promise<void> {
-    reservationIdentity(reservationId);
-    await this.query('select private.release_planning_request($1::uuid)', [reservationId]);
+  async release(lease: PlanningLease): Promise<void> {
+    reservationIdentity(lease);
+    await this.query('select private.release_planning_request($1::uuid,$2::uuid)', [lease.reservationId, lease.holderToken]);
   }
   close(): Promise<void> { return this.pool.end(); }
 }

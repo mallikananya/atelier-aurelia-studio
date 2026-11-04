@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { z } from "zod";
 import { CreativePlanV1 } from "../../../../../packages/contracts/src/planning";
-import type { GenerationRequest } from "../../../../../packages/ai/src/planning";
+import { awaitPlanningOperation, type GenerationRequest } from "../../../../../packages/ai/src/planning";
 import { PlanningProviderUnavailableError, type PlanningProviderConfig } from "./service";
 
 const Settings = z.object({
@@ -40,7 +40,7 @@ export function getLivePlanningProvider(env: Record<string, string | undefined> 
     maxTokens: env.PLANNING_LIVE_MAX_TOKENS ?? 6000 });
   if (!settings.success) return null;
   return { generator: { id: "live-chat-completions", version: settings.data.model }, promptVersion: "creative-director/ce-02.2",
-    provider: { generate: request => generate(endpoint, settings.data, request) } };
+    provider: { generate: (request, signal) => generate(endpoint, settings.data, request, signal) } };
 }
 
 async function messages(request: GenerationRequest) {
@@ -87,17 +87,23 @@ async function readBounded(response: Response, signal: AbortSignal): Promise<str
   }
 }
 
-async function generate(endpoint: URL, settings: SettingsValue, request: GenerationRequest): Promise<string> {
+async function generate(endpoint: URL, settings: SettingsValue, request: GenerationRequest, externalSignal?: AbortSignal): Promise<string> {
   try {
-    const body = JSON.stringify({ model: settings.model, messages: await messages(request),
+    const timeout = AbortSignal.timeout(settings.timeout);
+    const signal = externalSignal ? AbortSignal.any([externalSignal, timeout]) : timeout;
+    signal.throwIfAborted();
+    const body = JSON.stringify({ model: settings.model, messages: await awaitPlanningOperation(messages(request), signal),
       response_format: isLocalOllama(endpoint)
         ? { type: "json_schema", json_schema: { name: "creative_plan", strict: true,
           schema: z.toJSONSchema(CreativePlanV1, { unrepresentable: "any" }) } }
         : { type: "json_object" },
       ...(isLocalOllama(endpoint) ? { max_tokens: settings.maxTokens } : { max_completion_tokens: settings.maxTokens }) });
-    const signal = AbortSignal.timeout(settings.timeout);
-    const response = await fetch(endpoint.href, { method: "POST", redirect: "error", cache: "no-store", signal,
-      headers: { "content-type": "application/json", authorization: `Bearer ${settings.key}` }, body });
+    signal.throwIfAborted();
+    const response = await awaitPlanningOperation(fetch(endpoint.href, { method: "POST", redirect: "error", cache: "no-store", signal,
+      headers: { "content-type": "application/json", authorization: `Bearer ${settings.key}` }, body }).then(response => {
+      if (signal.aborted) { void response.body?.cancel().catch(() => {}); signal.throwIfAborted(); }
+      return response;
+    }), signal);
     const parsed = JSON.parse(await readBounded(response, signal)) as { choices?: { message?: { content?: unknown } }[] };
     const content = parsed?.choices?.[0]?.message?.content;
     if (typeof content !== "string" || !content.trim()) throw new PlanningProviderUnavailableError();
